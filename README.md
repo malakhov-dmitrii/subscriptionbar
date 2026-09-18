@@ -7,15 +7,20 @@ One macOS menu bar icon for the limits of every AI subscription you already pay 
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-lightgrey)
 
 Русская версия: [README.ru.md](README.ru.md).
+Screenshots below are demo mode (`--demo`): the data in them is invented.
 
-```
- ⚠ C33% !X1% G68%
-```
+<p align="center">
+  <img src="docs/images/menubar.png" width="300" alt="Menu bar showing a warning triangle, C33%, !X1% and G68%">
+</p>
 
 `C` is Claude, `X` is Codex, `G` is Grok. Numbers are what is **left**, not what
 is used. A `!` marks the service that is about to run out; the icon changes too,
 because macOS renders menu bar text as a monochrome template and colour would be
 stripped.
+
+<p align="center">
+  <img src="docs/images/dashboard.png" width="430" alt="The dashboard listing Claude, Codex, Grok and balances, with Codex at 1% in red">
+</p>
 
 ## What it does
 
@@ -91,8 +96,20 @@ SubscriptionBar copies the credentials it finds into its own Keychain entry. It
 never asks you to type a subscription password. API-key services take the key in
 a secure field instead.
 
+Accounts you have saved are listed in order of priority. That order is what
+rotation follows when one runs out.
+
+<p align="center">
+  <img src="docs/images/accounts.png" width="500" alt="Settings, Accounts tab: numbered accounts per service with rename fields, priority arrows and a delete button">
+</p>
+
 For browser sessions, Settings → Connections walks through the three steps: run
 the installer once, load the extension folder, then save a session per account.
+The companion extension saves one website session per account:
+
+<p align="center">
+  <img src="docs/images/extension.png" width="330" alt="Browser extension popup showing a green Connected status, an account picker and a save button">
+</p>
 
 ## Automatic switching
 
@@ -106,6 +123,10 @@ the installer once, load the extension folder, then save a session per account.
   the client changed its own credentials meanwhile.
 - After a switch there is a 120 second pause. After an error, automation stops
   and waits for you.
+
+<p align="center">
+  <img src="docs/images/settings.png" width="500" alt="Settings, General tab: switch and warning thresholds, notification status, per-service toggles">
+</p>
 
 ## Development
 
