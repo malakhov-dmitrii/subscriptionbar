@@ -18,7 +18,7 @@ final class AppModel: ObservableObject {
     @Published var pendingDelete: UUID?
     @Published var confirmLegacyQuit = false
 
-    enum NotificationStatus { case unknown, notAsked, allowed, denied }
+    enum NotificationStatus: Sendable { case unknown, notAsked, allowed, denied }
     let demo: Bool
     let previewOnly: Bool
     private let store = LocalStore()
@@ -348,14 +348,19 @@ final class AppModel: ObservableObject {
         }
     }
     /// A permission button with no visible outcome reads as broken, so keep the
-    /// current answer on screen.
+    /// current answer on screen. `UNNotificationSettings` is not Sendable, so the
+    /// reply is reduced to our own value inside the callback rather than crossing
+    /// the isolation boundary.
     func readNotificationStatus() async {
         guard !previewOnly else { return }
-        let settings = await UNUserNotificationCenter.current().notificationSettings()
-        switch settings.authorizationStatus {
-        case .authorized, .provisional, .ephemeral: notificationStatus = .allowed
-        case .denied: notificationStatus = .denied
-        default: notificationStatus = .notAsked
+        notificationStatus = await withCheckedContinuation { continuation in
+            UNUserNotificationCenter.current().getNotificationSettings { settings in
+                switch settings.authorizationStatus {
+                case .authorized, .provisional, .ephemeral: continuation.resume(returning: .allowed)
+                case .denied: continuation.resume(returning: .denied)
+                default: continuation.resume(returning: .notAsked)
+                }
+            }
         }
     }
     func refreshConnectionStatus() async {
