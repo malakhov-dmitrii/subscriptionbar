@@ -54,9 +54,15 @@ Requires macOS 14 or later. No dependencies beyond the Swift toolchain.
 ```sh
 git clone https://github.com/malakhov-dmitrii/subscriptionbar.git
 cd subscriptionbar
-scripts/package-app.sh          # builds dist/SubscriptionBar.app
+SUBSCRIPTIONBAR_ADHOC=1 scripts/package-app.sh   # builds dist/SubscriptionBar.app
 open dist/SubscriptionBar.app
 ```
+
+`SUBSCRIPTIONBAR_ADHOC=1` signs the bundle ad-hoc, which is what you want when
+building for yourself. Without it the script demands a Developer ID identity and
+**refuses to fall back silently**: changing the signature invalidates the
+Keychain trust an existing install already has, so that has to be a decision,
+not a default. Set `SUBSCRIPTIONBAR_SIGNING_IDENTITY` to use your own certificate.
 
 Packaging the Firefox companion needs Node.js; everything else is Swift only.
 

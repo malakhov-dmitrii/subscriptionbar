@@ -29,6 +29,11 @@ jobs:
         run: scripts/verify.sh
 
       - name: Package the app
+        # The runner has no Developer ID. The script refuses to fall back to
+        # ad-hoc on its own, because that would invalidate a user's saved
+        # Keychain trust, so ask for it explicitly here.
+        env:
+          SUBSCRIPTIONBAR_ADHOC: '1'
         run: scripts/package-app.sh
 
       - name: Check the bundle carries what the installer needs
