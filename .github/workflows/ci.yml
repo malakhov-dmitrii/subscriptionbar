@@ -12,8 +12,9 @@ concurrency:
 
 jobs:
   verify:
-    # macOS 14 is the deployment target; the Swift tests need a matching SDK.
-    runs-on: macos-14
+    # macOS 14 is the deployment target, but its runner image ships Swift 5.10
+    # and Package.swift needs tools 6.0, so build on a newer image.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
