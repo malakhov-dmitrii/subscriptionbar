@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "__MSG_extensionName__",
+  "version": "0.1.0",
+  "description": "__MSG_extensionDescription__",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAt8JHW4mA6I+3o5cjUITZzksvatrH2qPrdtF9mlYWH2bXJzevKYaDumNWIVXQRRhMYQ07abYS4YUSuCRTg8FGpGjqVb0QLMiKB98Xch3R0e/o3kYCSnA3kml/1cA8NQypU3VCJsVIRSIaH2/Pf5RMufWWukYjglQ0JBw47oM0Q022dkhHZIkI/NtX3LZXeuneUjxCrZLrluTTO/UZV73PHhx08N4hNPphPvZsMfYp1o2PWJCnTG51gPJkmD+e+v88S4qmZpt2EgYvD1lsLEGO/BX5t3YCk2l1T9Nz9xm4Da1z/xth60636jcArKYXwQv4nM21QyyERMX0YaoZ9PM6QQIDAQAB",
+  "permissions": [
+    "cookies",
+    "nativeMessaging",
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://claude.ai/*",
+    "https://*.claude.ai/*",
+    "https://chatgpt.com/*",
+    "https://*.chatgpt.com/*",
+    "https://auth.openai.com/*",
+    "https://grok.com/*",
+    "https://*.grok.com/*",
+    "https://auth.x.ai/*"
+  ],
+  "incognito": "not_allowed",
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "SubscriptionBar"
+  },
+  "default_locale": "en"
+}

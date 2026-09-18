@@ -1,0 +1,8 @@
+{
+  "extensionName": {
+    "message": "Расширение SubscriptionBar"
+  },
+  "extensionDescription": {
+    "message": "Применяет сохранённые локально сессии сайтов, выбранные в SubscriptionBar."
+  }
+}

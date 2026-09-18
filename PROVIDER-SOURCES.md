@@ -1,0 +1,33 @@
+# Usage adapters: source and verification
+
+Claude identity check additionally uses `GET https://api.anthropic.com/api/oauth/profile` with bearer authentication, following [CodexBar's public profile implementation](https://github.com/steipete/CodexBar/blob/main/Sources/CodexBarCore/Providers/Claude/ClaudeOAuth/ClaudeOAuthUsageFetcher.swift). The verifier compares nested account email and organization UUID with saved metadata. This does not verify an account UUID. Missing or mismatched values fail closed; no authenticated round-trip has been performed.
+
+Public source and documentation inspected on 2026-09-16. No authenticated provider round-trip has been verified. Fixture tests establish decoding and request construction only. All requests are GET, use fixed HTTPS endpoints, disable shared cookies/cache, and refuse redirects. Tokens and response bodies are not included in errors or logs.
+
+| Provider | Source | Contract |
+| --- | --- | --- |
+| Claude | [Reference tracker](https://github.com/hamed-elfayome/Claude-Usage-Tracker/blob/main/Claude%20Usage/Shared/Services/ClaudeAPIService.swift) | Browser session: `GET https://claude.ai/api/organizations/{UUID}/usage`, `Cookie: sessionKey=…`. Reads shared `five_hour` and `seven_day` utilization (0–100), ISO resets. OAuth fallback: `GET https://api.anthropic.com/api/oauth/usage`, bearer auth and `anthropic-beta: oauth-2025-04-20`. |
+| Codex | [Reference tracker DTOs](https://github.com/hamed-elfayome/Claude-Usage-Tracker/blob/main/Claude%20Usage/Shared/Services/Providers/Codex/CodexAPIService%2BTypes.swift) | `GET https://chatgpt.com/backend-api/wham/usage`, bearer and optional `ChatGPT-Account-Id`. Reads `rate_limit.primary_window` and `secondary_window`, `used_percent` (0–100), `reset_at` Unix seconds. |
+| Grok | [Reference billing client](https://github.com/maxbobkov/grok-usage/blob/master/Sources/BillingClient.swift) | `GET https://cli-chat-proxy.grok.com/v1/billing?format=credits`, bearer and reference CLI headers. Requires explicit `config.creditUsagePercent` or root `creditUsagePercent`; ISO `currentPeriod.end` or `billingPeriodEnd`. No guessed zero for omitted fields. |
+| Z.ai | [Provider-owned usage plugin](https://github.com/zai-org/zai-coding-plugins/blob/main/plugins/glm-plan-usage/skills/usage-query-skill/scripts/query-usage.mjs) | `GET https://api.z.ai/api/monitor/usage/quota/limit`, raw API key in `Authorization` (no added Bearer). `data.limits[]`: `TOKENS_LIMIT.percentage` represents 5h usage. Monthly MCP `TIME_LIMIT` is excluded from rotation because it measures a different capability. Reset time is not established by this source. |
+| OpenCode Go | [Provider endpoint](https://github.com/sst/opencode/blob/dev/packages/console/app/src/routes/zen/go/v1/usage.ts), [percent calculations](https://github.com/sst/opencode/blob/dev/packages/console/core/src/subscription.ts) | `GET https://opencode.ai/zen/go/v1/usage`, bearer API key. `usage.rolling/weekly/monthly`: `status`, `percent` (0–100, floored), `resetsAt` ISO. 403 means subscription missing. |
+| OpenRouter | [Official credits API](https://openrouter.ai/docs/api/api-reference/credits/get-credits.md) | `GET https://openrouter.ai/api/v1/credits`, bearer **management key**. Available USD is `data.total_credits - data.total_usage`. Ordinary inference keys can receive 403. |
+| DeepSeek | [Official balance API](https://api-docs.deepseek.com/api/get-user-balance), [authentication](https://api-docs.deepseek.com/) | `GET https://api.deepseek.com/user/balance`, bearer API key. `is_available`, `balance_infos[]`: `currency` (`CNY` or `USD`), decimal-string `total_balance`. Currencies stay separate. |
+
+The Claude reference's main OAuth path labels `/api/oauth/usage` disabled and instead sends a one-token Messages request. SubscriptionBar deliberately does not send that request: it performs inference and consumes quota. If read-only OAuth usage fails, connect a browser session. The reference retains an explicit-token method that still calls the OAuth usage endpoint, so public source does not establish universal endpoint availability.
+
+Missing, malformed, nonfinite, and out-of-range quota readings fail closed. Missing optional shared windows are skipped; an entirely unknown reading fails. Model-specific Claude limits and Codex additional model limits are not treated as shared account exhaustion. No response percentage is synthesized from a reset date.
+
+[OpenCode authentication source](https://github.com/sst/opencode/blob/dev/packages/opencode/src/auth/index.ts) stores provider-keyed `{type:"api",key:"…"}` entries in its data directory's `auth.json`. `OPENCODE_AUTH_CONTENT` overrides the file. Reading a new file does not prove an already running model client has reloaded credentials; that requires live verification.
+# Claude web account pairing
+
+`GET https://claude.ai/api/account` with the existing `sessionKey` cookie returns
+`email_address` and `memberships[].organization.uuid`. Import joins a web-only
+Tracker profile with current CLI metadata only when both email and organization
+match. Source: CodexBar `ClaudeWebAPIFetcher.swift`, `AccountResponse` and
+`fetchAccountInfo` (public source inspected 2026-09-17).
+## Kimi Code and Cursor (2026-09-18)
+
+- Kimi Code: official [CLI usage parser](https://github.com/MoonshotAI/kimi-cli/blob/main/src/kimi_cli/ui/shell/usage.py) and [platform base URL](https://github.com/MoonshotAI/kimi-cli/blob/main/src/kimi_cli/auth/platforms.py). GET `https://api.kimi.com/coding/v1/usages`, bearer subscription key. `usage` is weekly; `limits[].detail` supplies count-based quotas plus `window.duration/timeUnit`. Newer ratio pools follow secondary [CodexBar models](https://github.com/steipete/CodexBar/blob/main/Sources/CodexBarCore/Providers/Kimi/KimiModels.swift). Ratios are 0..1; missing quota is not zero. No live Kimi credential available for verification.
+- Cursor: [CodexBar transport](https://github.com/steipete/CodexBar/blob/main/Sources/CodexBarCore/Providers/Cursor/CursorStatusProbe.swift) and [local auth reader](https://github.com/steipete/CodexBar/blob/main/Sources/CodexBarCore/Providers/Cursor/CursorAppAuth.swift). Read-only SQLite `cursorAuth/accessToken`; JWT subject determines WorkosCursorSessionToken cookie. GET `https://cursor.com/api/usage-summary`; personal plan `totalPercentUsed` is 0..100, not a ratio. Personal overall/on-demand finite caps use used/limit. Shared team pools are not labeled personal quotas; absent caps remain unknown. Live read-only request returned 200 and a finite Ultra plan quota. No public stable API contract found; this dashboard endpoint may change.
+- Both are monitoring-only. No changes to the clients' databases or logins.
