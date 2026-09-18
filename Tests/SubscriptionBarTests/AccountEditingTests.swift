@@ -45,9 +45,14 @@ struct AccountEditingTests {
         model.publishReading(try UsageSnapshot(windows: [UsageWindow("5 hours", usedPercent: 10)], source: "test"), for: id)
         #expect(model.menuBarEntries.first { $0.provider == .claude }?.level == .ok)
 
+        // The demo has another service already at 1%, so scope this to Claude.
+        #expect(model.menuBarEntries.first { $0.provider == .claude }?.text == "C90%")
+
         model.publishReading(try UsageSnapshot(windows: [UsageWindow("5 hours", usedPercent: 99.5)], source: "test"), for: id)
         #expect(model.menuBarEntries.first { $0.provider == .claude }?.level == .critical)
         #expect(model.needsAttention)
+        // Colour cannot survive the menu bar's template rendering; the marker must.
+        #expect(model.menuBarText.contains("!C0%"))
     }
 
     @Test func thresholdsStayOrderedWhenEdited() {

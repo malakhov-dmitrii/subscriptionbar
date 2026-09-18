@@ -7,7 +7,9 @@ public struct MenuBarEntry: Sendable, Equatable, Identifiable {
     public let value: String
     public let level: UsageLevel
     public var id: String { provider.rawValue }
-    public var text: String { label + value }
+    /// The menu bar is rendered as a template image, so colour cannot mark the
+    /// service that is running out. A leading "!" survives monochrome.
+    public var text: String { (level == .critical ? "!" : "") + label + value }
     public init(provider: Provider, label: String, value: String, level: UsageLevel) {
         self.provider = provider; self.label = label; self.value = value; self.level = level
     }

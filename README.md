@@ -1,156 +1,125 @@
 # SubscriptionBar
 
-## Язык интерфейса
+One macOS menu bar icon for the limits of every AI subscription you already pay for.
 
-При первом запуске язык берётся из системной локали macOS.
-В настройках на вкладке «Строка меню» выберите «Русский» или «English».
-Язык окон меняется сразу и сохраняется между запусками. Системные меню macOS
-применяют его после перезапуска. Переведены окна, карточки,
-формы, подсказки, меню, уведомления и сообщения об ошибках. Даты и суммы
-используют выбранную локаль. Названия сервисов и имена ваших аккаунтов не меняются.
+[![CI](https://github.com/malakhov-dmitrii/subscriptionbar/actions/workflows/ci.yml/badge.svg)](https://github.com/malakhov-dmitrii/subscriptionbar/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![macOS 14+](https://img.shields.io/badge/macOS-14%2B-lightgrey)
 
-У расширения браузера есть отдельный переключатель языка в его окне.
-Непубличная подпись Firefox остаётся отдельным шагом установки расширения.
+Русская версия: [README.ru.md](README.ru.md).
 
-Локальное приложение для macOS 14+: одна иконка для лимитов Claude, Codex,
-Grok и опциональных Z.ai, OpenCode Go, Kimi Code, Cursor, OpenRouter, DeepSeek.
+```
+ ⚠ C33% !X1% G68%
+```
 
-Kimi Code подключается ключом подписки из его консоли. Cursor использует аккаунт,
-открытый в установленном Cursor.app: локальная база читается без изменений, вход
-проверяется запросом лимитов перед сохранением в Keychain. Обновлённый токен того
-же аккаунта подхватывается из Cursor; другой аккаунт нужно подключить отдельно.
-Для Kimi Code и Cursor доступен мониторинг, без автоматической смены аккаунтов.
+`C` is Claude, `X` is Codex, `G` is Grok. Numbers are what is **left**, not what
+is used. A `!` marks the service that is about to run out; the icon changes too,
+because macOS renders menu bar text as a monochrome template and colour would be
+stripped.
 
-Это приложение для личного использования. Лимиты четырёх реальных аккаунтов проверены через API.
-Переключение между ними, продолжение задач после перезапуска Codex и серверная
-идентичность переключённых браузерных сессий ещё не проверены.
-Не удаляйте старые приложения до проверки своих аккаунтов.
+## What it does
 
-Первое открытие после исправления Keychain показывает сохранённые лимиты и
-кнопку **Разрешить доступ**. До нажатия приложение не обращается к Keychain и API.
-Перенос собирает существующие профили в одну запись `vault-v1`, проверяет
-идентичность и сохраняет старые записи. Одно нажатие может вызвать не больше
-одного системного запроса. Отмена не повторяет запрос автоматически.
+- **Reads limits** for Claude Code, Codex and Grok CLI, plus optional Z.ai,
+  OpenCode Go, Kimi Code, Cursor, OpenRouter and DeepSeek.
+- **Switches accounts** for Claude, Codex and Grok when one runs out, using the
+  priority you set. Every step is verified before and after it writes.
+- **Stays local.** No server, no telemetry, no proxying of your requests.
+  Credentials live in the macOS Keychain; the app talks only to each provider's
+  own usage endpoint.
 
-После переноса доступ к единой записи проверяется без системных диалогов.
-При отказе мониторинг и автосмена останавливаются до явного разрешения в приложении.
-Обычная упаковка использует Developer ID со стабильным идентификатором и командой,
-чтобы доверие сохранялось при обновлениях. Переход со старой ad-hoc сборки может
-потребовать одного разрешения общей записи. Фоновый опрос не открывает диалог пароля.
+## What it does not do
 
-## Запуск
+This list is the point, not a disclaimer. The project refuses to guess.
 
-Откройте `dist/SubscriptionBar.app` после сборки. Установленная версия находится в `/Applications/SubscriptionBar.app`. Сначала завершите перенос существующих аккаунтов
-через **Разрешить доступ**. Кнопка `+` сохраняет текущий аккаунт CLI.
-Войдите во второй аккаунт в исходном клиенте и сохраните его под другим именем.
-Приложение хранит копии credentials в macOS Keychain; macOS может запросить
-доступ. API-ключи вводятся только в защищённое поле приложения.
+- A missing, malformed or out-of-range reading is **never** treated as zero, and
+  never triggers a switch.
+- Switching a native sign-in and switching browser cookies are not one atomic
+  operation. On a partial result the app keeps the new native account, reports
+  the browser failure and pauses automation.
+- Codex gets a normal quit request. There is no force kill, and if the quit is
+  declined or takes over 30 seconds the sign-in is not changed.
+- A running CLI process may keep its old sign-in in memory. Task resumption
+  after a switch is **not verified**.
+- Claude Desktop, ChatGPT Desktop and Safari are not integrated.
+- Applying saved cookies does not prove the website server accepted that account.
+  The app says so instead of claiming success.
 
-Настройки → Общие: включите нужные сервисы, задайте порог автосмены и порог
-предупреждения. Отключённые сервисы не отображаются.
-Настройки → Аккаунты: переименуйте аккаунты, задайте порядок переключения
-и денежные пороги, удалите ненужные. Удаление стирает credentials и сессии
-браузера этого аккаунта из Keychain; сам аккаунт в сервисе не затрагивается.
+Every provider endpoint, its public source and its exact contract are documented
+in [PROVIDER-SOURCES.md](PROVIDER-SOURCES.md).
 
-В демонстрационном режиме реальные файлы, аккаунты и Keychain не используются:
+## Install
+
+Requires macOS 14 or later. No dependencies beyond the Swift toolchain.
+
+```sh
+git clone https://github.com/malakhov-dmitrii/subscriptionbar.git
+cd subscriptionbar
+scripts/package-app.sh          # builds dist/SubscriptionBar.app
+open dist/SubscriptionBar.app
+```
+
+Packaging the Firefox companion needs Node.js; everything else is Swift only.
+
+## Try it without touching anything
 
 ```sh
 open dist/SubscriptionBar.app --args --demo
 ```
 
-`--preview-only` показывает сохранённые реальные данные с временем проверки,
-без Keychain, API, записи настроек или переключения. Отдельный тестовый bundle
-с `SubscriptionBarPreviewOnly=true` всегда работает в этом режиме и игнорирует
-команды импорта и работы с credentials.
-
-Настройки → Общие → «Переход со старых индикаторов» →
-**Закрыть три старых индикатора** доступно после успешного
-чтения активных подписок. Закрывает только три трекера; Codex/Claude/Grok клиенты
-не закрывает. Автозапуск старых трекеров при входе в macOS этим действием не меняется.
-
-## Что подключено
-
-| Сервис / клиент | Реализовано | Ограничение |
-| --- | --- | --- |
-| Claude Code | Сохранение логина; Keychain, credentials и oauthAccount; проверка email и организации через профиль | Подхват уже запущенным CLI не проверен; нужен доступный профиль OAuth |
-| Claude usage | GET usage через OAuth или сохранённую браузерную sessionKey | OAuth usage может быть отключён; тогда нужна браузерная сессия того же аккаунта/организации |
-| Codex Desktop | Сохранение логина, запись auth.json, штатное закрытие и переоткрытие | Только файловое хранилище; продолжение задач не подтверждено |
-| Codex CLI | Смена активного auth.json | Работающий процесс может держать прежний логин; нет принудительного перезапуска терминалов |
-| Grok CLI | Сохранение логина, запись auth.json, общий процент кредитов | Смена логина работающим процессом не подтверждена |
-| Claude / ChatGPT / Grok в Chrome, Edge, Brave | Явный захват cookies; применение по команде; обновление вкладок | Нужна установка расширения; применяется сохранённая сессия, серверный аккаунт не проверяется |
-| Z.ai / OpenCode Go | Мониторинг квот по API-ключу | Ключи сторонних клиентов не переключаются |
-| OpenRouter / DeepSeek | Денежный баланс и порог предупреждения | OpenRouter требует management key; валюты не суммируются |
-| Claude Desktop / ChatGPT Desktop / Safari / Firefox | Не подключены | Универсального механизма смены логина здесь нет |
-
-Выполнение полного запроса «везде» не завершено. Неподключённые клиенты перечислены
-явно и в настройках. Нет прокси запросов или автоматического перезапуска терминалов.
-
-## Автопереключение
-
-- Порог: осталось **≤1%** в одном из общих окон лимита. Порог настраивается
-  в Настройки → Общие; отдельный порог предупреждения (по умолчанию 15%)
-  красит проценты и иконку заранее, не вызывая смену аккаунта.
-- Выбирается следующий включённый аккаунт того же сервиса в заданном порядке.
-- Текущий и следующий аккаунты должны иметь успешные свежие данные (до 90 секунд).
-  Перед записью следующий аккаунт проверяется снова.
-- Ошибки, неизвестный формат, истёкшее окно и старые данные не считаются нулём.
-- После смены действует пауза 120 секунд. Если доступных аккаунтов нет — уведомление.
-- Перед записью сохраняется текущий логин. Частичные ошибки записи откатываются,
-  если клиент сам не изменил credentials. После ошибки автоматика останавливается.
-- Codex получает штатный запрос закрытия; принудительного убийства процесса нет.
-  Если закрытие отклонено или не завершилось за 30 секунд, логин не меняется.
-- Смена нативного логина и браузерных cookies не является общей атомарной операцией.
-  При частичном результате приложение сохраняет новый нативный активный аккаунт,
-  сообщает об ошибке браузера и приостанавливает автоматику.
-- Неактивные OAuth snapshots не обновляются в фоне, чтобы не забрать одноразовый
-  refresh token у другого клиента. Истёкший аккаунт нужно заново войти и сохранить.
-
-## Браузер
-
-1. Положите `.app` туда, где будете его запускать.
-2. Настройки → Подключения → Настроить связь с браузером. Скрипт устанавливает только
-   собственный native messaging host и три browser manifest в пользовательской Library.
-3. Откройте папку расширения из настроек. В `chrome://extensions` включите режим
-   разработчика и загрузите эту папку распакованной.
-4. Войдите на сайт нужным аккаунтом. В расширении выберите соответствующий аккаунт
-   и нажмите Capture. **Соответствие выбирает пользователь**, сервер не сверяется.
-5. Повторите для других аккаунтов и включите переключение браузера в настройках аккаунта.
-
-Расширение не требует дополнительной закреплённой иконки в тулбаре. Используется
-native messaging, без HTTP-порта. Cookies сохраняются в Keychain приложения, не
-в localStorage расширения. Поддерживается обычный cookie store, без incognito и
-partitioned cookies. При ротации или истечении веб-сессии повторите захват.
-
-При переносе `.app` заново запустите установщик связи с браузером. При переходе
-на новое приложение остановите старые переключатели, чтобы они не меняли логины
-одновременно. Их файлы и автозапуск эта сборка не удаляет.
-
-## Проверка и сборка
-
-Нужны Xcode/Swift 6 и Node.js для тестов расширения; пакетов npm/Swift нет.
+Demo mode uses sample data: no Keychain, no network, no files read or written.
 
 ```sh
-bash scripts/verify.sh
-bash scripts/package-app.sh
-bash scripts/notarize-app.sh dist/SubscriptionBar.app
+open dist/SubscriptionBar.app --args --preview-only
 ```
 
-`package-app.sh` требует действующий Developer ID и timestamp. Публичный fingerprint
-сертификата задаётся через `SUBSCRIPTIONBAR_SIGNING_IDENTITY`; для изолированных
-UI-проб можно явно задать `SUBSCRIPTIONBAR_ADHOC=1`. Автоматического отката на ad-hoc нет.
-`notarize-app.sh` использует существующий профиль Keychain `pulse-notary` (переопределяется
-через `SUBSCRIPTIONBAR_NOTARY_PROFILE`), сохраняет UUID отправки, ждёт Accepted,
-прикрепляет ticket и проверяет Gatekeeper. Пароли и приватные ключи в аргументах не нужны.
+Preview mode shows your real last-known readings with their age, and disables
+Keychain, network and switching entirely.
 
-Протоколы, декодеры,
-порог, свежесть, частичные записи, конкурентные изменения и cookies проверяются
-на синтетических данных. Тесты не читают реальные credentials.
+## Connecting an account
 
-`settings.json`, браузерные команды и последний результат находятся в
-`~/Library/Application Support/SubscriptionBar`. Паролей и токенов в них нет.
-Keychain service: `com.local.subscriptionbar.vault`.
+1. Sign in to the client as usual (`claude`, `codex`, `grok`).
+2. Press `+` in SubscriptionBar and save that account under a name.
+3. Sign in to your **second** account in the same client, and save it too.
 
-Исходники API и границы проверки: [PROVIDER-SOURCES.md](PROVIDER-SOURCES.md).
-За основу исследования взяты MIT-проекты [Claude Usage Tracker](https://github.com/hamed-elfayome/Claude-Usage-Tracker),
-[Codex Account Switcher](https://github.com/liuzhao1225/codex-account-switcher) и
-[Grok Usage](https://github.com/maxbobkov/grok-usage).
+SubscriptionBar copies the credentials it finds into its own Keychain entry. It
+never asks you to type a subscription password. API-key services take the key in
+a secure field instead.
+
+For browser sessions, Settings → Connections walks through the three steps: run
+the installer once, load the extension folder, then save a session per account.
+
+## Automatic switching
+
+- Triggers when a shared limit window drops to the configured threshold
+  (1% by default, adjustable in Settings → General).
+- A separate warning threshold (15% by default) colours the interface earlier
+  without switching anything.
+- Both the current and the next account need a successful reading under 90
+  seconds old; the target is re-checked immediately before anything is written.
+- The previous sign-in is saved first. Partial write failures roll back unless
+  the client changed its own credentials meanwhile.
+- After a switch there is a 120 second pause. After an error, automation stops
+  and waits for you.
+
+## Development
+
+```sh
+scripts/verify.sh   # Swift tests, extension tests, syntax and script checks
+swift build
+swift test
+```
+
+The CI workflow runs exactly `scripts/verify.sh` on macOS.
+
+Layout: `Sources/SubscriptionCore` holds the provider adapters, rotation policy,
+Keychain vault and localization; `Sources/SubscriptionBar` holds the SwiftUI
+interface; `browser-extension/` holds the Chrome extension, with the Firefox
+build generated from the same sources by `build-firefox.mjs`.
+
+## Security
+
+Credential handling, threat model and reporting: [SECURITY.md](SECURITY.md).
+
+## License
+
+MIT — see [LICENSE](LICENSE).
