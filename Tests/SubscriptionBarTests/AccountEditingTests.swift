@@ -61,4 +61,35 @@ struct AccountEditingTests {
         model.setWarnThreshold(20)
         #expect(model.settings.warnAt == 20)
     }
+
+    @Test func balanceThresholdShowsTheCurrencyTheServiceActuallyReported() throws {
+        let model = AppModel(demo: true)
+        let openRouter = try #require(model.settings.accounts.first { $0.provider == .openRouter })
+        #expect(model.balanceCurrency(openRouter) == "USD")
+
+        model.readings[openRouter.id] = try UsageSnapshot(
+            balances: [Balance(currency: "CNY", available: 12)], source: "test")
+        #expect(model.balanceCurrency(openRouter) == "CNY")
+
+        // No reading yet must still label the field rather than leave a bare number.
+        model.readings[openRouter.id] = nil
+        #expect(model.balanceCurrency(openRouter) == "USD")
+    }
+
+    @Test func cliFolderCheckAcceptsOnlyAnExistingDirectory() throws {
+        let model = AppModel(demo: true)
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("subscriptionbar-path-check-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("not-a-folder")
+        FileManager.default.createFile(atPath: file.path, contents: Data())
+
+        #expect(model.pathExists(directory.path))
+        #expect(model.pathExists("  " + directory.path + "  "), "a pasted path with spaces still resolves")
+        #expect(model.pathExists("~"), "tilde is expanded")
+        #expect(model.pathExists(file.path) == false, "a file is not a config folder")
+        #expect(model.pathExists(directory.path + "/missing") == false)
+        #expect(model.pathExists("") == false)
+    }
 }
