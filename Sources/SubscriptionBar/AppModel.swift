@@ -9,7 +9,7 @@ final class AppModel: ObservableObject {
     @Published var errors: [UUID: String] = [:]
     @Published var browserAccounts: Set<UUID> = []
     @Published var busy = false
-    @Published var lastResult = ""
+    @Published private(set) var lastResult = ""
     @Published var now = Date()
     @Published var credentialAccess: CredentialAccess = .checking
     @Published var notificationStatus: NotificationStatus = .unknown
@@ -17,15 +17,19 @@ final class AppModel: ObservableObject {
     @Published var nativeHostInstalled = false
     @Published var pendingDelete: UUID?
     @Published var confirmLegacyQuit = false
+    @Published var codexObservations: [UUID: CodexProfileObservation] = [:]
+    @Published var codexReauthentication: CodexReauthenticationController?
 
     enum NotificationStatus: Sendable { case unknown, notAsked, allowed, denied }
     let demo: Bool
     let previewOnly: Bool
-    private let store = LocalStore()
-    private let runtime = AccountRuntime()
-    private var settingsData: Data?
+    let store: LocalStore
+    let runtime: AccountRuntime
+    var settingsData: Data?
     private var pollTask: Task<Void, Never>?
     private var notifications: [Provider: String] = [:]
+    private let notificationSender: (UNNotificationRequest) -> Void
+    private var lastResultAuthorizationGeneration: UUID?
 
     /// The icon must react to the thing the product exists for: a limit about to run out.
     var needsAttention: Bool {
@@ -71,9 +75,14 @@ final class AppModel: ObservableObject {
         settings.menuBarProviders = selected
         persist()
     }
-    init(demo: Bool, previewOnly: Bool = false) {
+    init(demo: Bool, previewOnly: Bool = false, store: LocalStore = LocalStore(),
+         runtime: AccountRuntime? = nil, startPolling: Bool = true,
+         notificationSender: @escaping (UNNotificationRequest) -> Void = { UNUserNotificationCenter.current().add($0) }) {
         self.demo = demo
         self.previewOnly = previewOnly
+        self.store = store
+        self.runtime = runtime ?? AccountRuntime(store: store)
+        self.notificationSender = notificationSender
         // Demo used to leave L10n on the stored language while the views read
         // settings.language, so the window mixed two languages.
         let startup = (try? store.loadSettings().language) ?? AppLanguage.preferred
@@ -92,8 +101,9 @@ final class AppModel: ObservableObject {
                     settings.claudeHome = environment["CLAUDE_CONFIG_DIR"] ?? settings.claudeHome
                     settings.codexHome = environment["CODEX_HOME"] ?? settings.codexHome
                 }
-            } catch { lastResult = errorText(error); settings.automationPausedReason = t("Settings could not be loaded.") }
+            } catch { recordOperationFailure(error); settings.automationPausedReason = t("Settings could not be loaded.") }
             if previewOnly { credentialAccess = .preview; return }
+            if !startPolling { credentialAccess = settings.accounts.isEmpty ? .ready : .checking; return }
             pollTask = Task { [weak self] in
                 guard let self else { return }
                 if self.settings.vaultSetupComplete == true {
@@ -103,7 +113,7 @@ final class AppModel: ObservableObject {
                     self.credentialAccess = .ready
                 } else {
                     // First launch/migration never touches Keychain until the user acts.
-                    self.credentialAccess = .locked
+                    self.credentialAccess = .migration(completed: 0, total: self.settings.accounts.count)
                 }
                 while !Task.isCancelled {
                     if self.credentialAccess.permitsPolling { await self.refresh() }
@@ -114,26 +124,57 @@ final class AppModel: ObservableObject {
             }
         }
     }
+    func setResult(_ message: String) {
+        lastResult = message
+        lastResultAuthorizationGeneration = nil
+    }
+    func dismissResult() { setResult("") }
+    func recordOperationFailure(_ error: Error) {
+        let event = authorizationEvent(for: error)
+        lastResult = errorText(error)
+        lastResultAuthorizationGeneration = event?.generation
+    }
+    private func recordAccountFailure(_ error: Error, for id: UUID) {
+        _ = authorizationEvent(for: error)
+        errors[id] = errorText(error)
+    }
+    private func authorizationEvent(for error: Error) -> CredentialAuthorizationEvent? {
+        guard let failure = error as? KeychainAuthorizationError else { return nil }
+        let event: CredentialAuthorizationEvent
+        if case .authorizationRequired(let existing) = credentialAccess, existing.target == failure.target {
+            event = CredentialAuthorizationEvent(error: failure, generation: existing.generation)
+        } else {
+            event = CredentialAuthorizationEvent(error: failure)
+        }
+        credentialAccess = .authorizationRequired(event)
+        return event
+    }
+    private func clearResult(for event: CredentialAuthorizationEvent) {
+        guard lastResultAuthorizationGeneration == event.generation else { return }
+        lastResult = ""
+        lastResultAuthorizationGeneration = nil
+    }
     func persist() {
         guard !demo, !previewOnly else { return }
         do { settingsData = try store.saveSettings(settings, expected: settingsData) }
-        catch { settings.automationPausedReason = t("Cannot save settings."); lastResult = errorText(error) }
+        catch { settings.automationPausedReason = t("Cannot save settings."); recordOperationFailure(error) }
     }
-    private func saveOrThrow() throws {
+    func saveOrThrow() throws {
         if !demo && !previewOnly { settingsData = try store.saveSettings(settings, expected: settingsData) }
     }
     func add(provider: Provider, label: String, apiKey: String) async -> Bool {
         guard !busy, !previewOnly, credentialAccess.permitsPolling else { return false }
         busy = true; defer { busy = false }
         do {
-            if demo { lastResult = t("Demo: accounts are not saved."); return true }
-            let credentials = try await runtime.capture(provider: provider, settings: settings, apiKey: apiKey)
+            if demo { setResult(t("Demo: accounts are not saved.")); return true }
             let cleanLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !cleanLabel.isEmpty, cleanLabel.count <= 80 else { throw AppFailure.message(t("Enter an account name (up to 80 characters).")) }
+            if provider == .codex { return try await addCodexAccount(label: cleanLabel) }
+            let credentials = try await runtime.capture(provider: provider, settings: settings, apiKey: apiKey)
             if let existing = settings.accounts.first(where: { $0.provider == provider && $0.identity == credentials.identity }) {
                 try await runtime.save(account: existing, credential: credentials)
                 settings.active[provider] = existing.id
-                lastResult = t("Sign-in updated: %@.", existing.label)
+                setResult(t("Sign-in updated: %@.", existing.label))
             } else {
                 let account = Account(provider: provider, label: cleanLabel, identity: credentials.identity)
                 try await runtime.save(account: account, credential: credentials)
@@ -141,18 +182,23 @@ final class AppModel: ObservableObject {
                 settings.active[provider] = account.id
                 let wasOff = !settings.enabledProviders.contains(provider)
                 settings.enabledProviders.insert(provider)
-                lastResult = t("Added %@: %@.", provider.name, account.label)
+                var message = t("Added %@: %@.", provider.name, account.label)
                 // Turning a service back on is a settings change; say so instead of doing it quietly.
-                if wasOff { lastResult += " " + t("%@ was switched back on in Settings.", provider.name) }
+                if wasOff { message += " " + t("%@ was switched back on in Settings.", provider.name) }
+                setResult(message)
             }
             try saveOrThrow()
             return true
-        } catch { lastResult = errorText(error); return false }
+        } catch { recordOperationFailure(error); return false }
     }
     func refresh() async {
         guard !busy, !demo, !previewOnly, credentialAccess.permitsPolling else { return }
         busy = true; defer { busy = false; now = Date() }
-        let accounts = settings.accounts.filter { $0.enabled && settings.enabledProviders.contains($0.provider) }
+        await synchronizeCodexProfiles()
+        guard credentialAccess.permitsPolling else { return }
+        let accounts = settings.accounts.filter {
+            $0.enabled && settings.enabledProviders.contains($0.provider)
+        }
         let currentSettings = settings
         await withTaskGroup(of: (UUID, Result<UsageSnapshot, Error>, Bool).self) { group in
             for account in accounts {
@@ -167,18 +213,17 @@ final class AppModel: ObservableObject {
                 if hasBrowser { browserAccounts.insert(id) } else { browserAccounts.remove(id) }
                 switch result {
                 case .success(let reading): publishReading(reading, for: id)
-                case .failure(let error):
-                    errors[id] = errorText(error)
-                    if error is KeychainAccessError { credentialAccess = .locked }
+                case .failure(let error): recordAccountFailure(error, for: id)
                 }
             }
         }
         guard credentialAccess.permitsPolling else { return }
         for provider in Provider.allCases {
+            if provider == .codex && !codexRotationReady { continue }
             let decision = RotationPolicy.decide(provider: provider, settings: settings, readings: readings,
-                                                 failures: Set(errors.keys))
+                                                 failures: Set(errors.keys).union(provider == .codex ? codexAccountsOwnedElsewhere : []))
             switch decision {
-            case .switchTo(let id): await performSwitch(id)
+            case .switchTo(let id): await performSwitch(id, automatic: true)
             case .unavailable(let message): notify(provider, message: message)
             case .stay: break
             }
@@ -197,14 +242,16 @@ final class AppModel: ObservableObject {
         busy = true; defer { busy = false }
         await performSwitch(id)
     }
-    private func performSwitch(_ id: UUID) async {
-        guard let target = settings.accounts.first(where: { $0.id == id }), target.enabled,
-              let originalID = settings.active[target.provider], originalID != id,
-              let original = settings.accounts.first(where: { $0.id == originalID }) else { return }
+    private func performSwitch(_ id: UUID, automatic: Bool = false) async {
+        guard let target = settings.accounts.first(where: { $0.id == id }), target.enabled else { return }
+        if target.provider == .codex { await performCodexSwitch(target, automatic: automatic); return }
+        guard let originalID = settings.active[target.provider], originalID != id else { return }
         if demo {
-            settings.active[target.provider] = id; lastResult = t("Demo: selected %@. Real sign-ins were not changed.", target.label); return
+            settings.active[target.provider] = id
+            setResult(t("Demo: selected %@. Real sign-ins were not changed.", target.label))
+            return
         }
-        var reopenURL: URL?
+        guard let original = settings.accounts.first(where: { $0.id == originalID }) else { return }
         do {
             guard target.canSwitch else { throw AppFailure.unsupported(t("Only monitoring is connected for this service.")) }
             // Recheck both target access and quota just before affecting a client.
@@ -216,46 +263,56 @@ final class AppModel: ObservableObject {
             if target.browserEnabled { try await runtime.checkBrowserReady(target.id) }
             settings.automationPausedReason = t("Switching did not finish. Check the active account before continuing.")
             try saveOrThrow()
-            if target.provider == .codex {
-                guard settings.restartCodex else { throw AppFailure.message(t("Allow restarting Codex in Settings to switch accounts.")) }
-                reopenURL = try await DesktopHandoff.closeCodex()
-            }
             try await runtime.switchNative(to: target, from: original, settings: settings)
             settings.active[target.provider] = target.id
             settings.lastSwitch[target.provider] = Date()
             try saveOrThrow()
-            try await DesktopHandoff.reopen(reopenURL)
-            reopenURL = nil
             if target.browserEnabled { try await runtime.browserSwitch(account: target) }
             settings.automationPausedReason = nil
             try saveOrThrow()
-            lastResult = t("%@ → %@. Credentials verified.", target.provider.name, target.label)
-            if target.provider == .codex { lastResult += "\n" + t(" Codex was reopened if it was running. Task resumption is unverified.") }
-            if target.browserEnabled { lastResult += "\n" + t(" Cookies applied; website account identity was not verified by the server.") }
+            var message = t("%@ → %@. Credentials verified.", target.provider.name, target.label)
+            if target.browserEnabled { message += "\n" + t(" Cookies applied; website account identity was not verified by the server.") }
+            setResult(message)
             try store.saveReceipt(lastResult)
             notify(target.provider, message: lastResult)
         } catch {
-            if error is KeychainAccessError { credentialAccess = .locked }
-            if let url = reopenURL { try? await DesktopHandoff.reopen(url) }
             settings.automationPausedReason = t("Automatic switching paused after an error.")
-            lastResult = errorText(error)
+            recordOperationFailure(error)
             try? saveOrThrow(); try? store.saveReceipt(lastResult)
             notify(target.provider, message: lastResult)
         }
     }
     func authorizeAccounts() async {
         guard !busy, !demo, !previewOnly else { return }
+        let pending: CredentialAuthorizationEvent?
+        if case .authorizationRequired(let event) = credentialAccess { pending = event }
+        else { pending = nil }
         busy = true
         do {
-            credentialAccess = try await runtime.authorizeAccess(settings: settings)
+            credentialAccess = try await runtime.authorizeAccess(settings: settings, event: pending)
+            if let pending, case .authorizationRequired(let current) = credentialAccess,
+               current.generation == pending.generation {
+                // The same request is still pending; do not claim recovery.
+            } else if let pending {
+                clearResult(for: pending)
+            }
             if credentialAccess.permitsPolling {
                 settings.vaultSetupComplete = true
                 try saveOrThrow()
             }
-        }
-        catch {
-            lastResult = t("Access was not granted. Another prompt requires a new click.")
+        } catch let resolved as CredentialRecoveryResolvedError {
+            if let pending { clearResult(for: pending) }
             credentialAccess = await runtime.accessStatus(settings: settings)
+            setResult(errorText(resolved.failure))
+        } catch {
+            if let pending {
+                credentialAccess = .authorizationRequired(pending)
+                lastResult = t("Access was not granted. Another prompt requires a new click.")
+                lastResultAuthorizationGeneration = pending.generation
+            } else {
+                recordOperationFailure(error)
+                credentialAccess = await runtime.accessStatus(settings: settings)
+            }
         }
         busy = false
         if credentialAccess.permitsPolling { await refresh() }
@@ -264,14 +321,14 @@ final class AppModel: ObservableObject {
         guard !busy, !previewOnly, !demo, credentialAccess.permitsPolling else { return }
         let activeIDs = settings.enabledProviders.compactMap { settings.active[$0] }
         guard !activeIDs.isEmpty, activeIDs.allSatisfy({ readings[$0]?.isFresh(at: Date()) == true && errors[$0] == nil }) else {
-            lastResult = t("Refresh usage first: fresh data is required for all connected active accounts.")
+            setResult(t("Refresh usage first: fresh data is required for all connected active accounts."))
             return
         }
         busy = true; defer { busy = false }
         do {
             let count = try await DesktopHandoff.closeLegacyTrackers()
-            lastResult = t("Quit %d old trackers. SubscriptionBar remains. Their macOS login settings were not changed.", count)
-        } catch { lastResult = errorText(error) }
+            setResult(t("Quit %d old trackers. SubscriptionBar remains. Their macOS login settings were not changed.", count))
+        } catch { recordOperationFailure(error) }
     }
     func resume() { settings.automationPausedReason = nil; persist(); Task { await refresh() } }
     func enable(_ provider: Provider, _ enabled: Bool) {
@@ -314,20 +371,26 @@ final class AppModel: ObservableObject {
     func delete(_ id: UUID) async {
         guard !busy, !previewOnly, let account = settings.accounts.first(where: { $0.id == id }) else { return }
         busy = true; defer { busy = false }
-        if settings.active[account.provider] == id {
-            let replacement = settings.accounts.first { $0.provider == account.provider && $0.id != id }
-            if let replacement { settings.active[account.provider] = replacement.id }
-            else { settings.active[account.provider] = nil }
-        }
-        settings.accounts.removeAll { $0.id == id }
-        readings[id] = nil; errors[id] = nil; browserAccounts.remove(id)
-        persist()
-        guard !demo else { lastResult = t("Removed %@: %@.", account.provider.name, account.label); return }
-        // A failure to clear the secret must not be reported as a clean removal.
+        let previousSettings = settings
         do {
-            try await runtime.forget(id)
-            lastResult = t("Removed %@: %@.", account.provider.name, account.label)
-        } catch { lastResult = errorText(error) }
+            let forgotten = demo ? ForgottenAccountSecrets(entries: [:]) : try await runtime.forget(id)
+            if settings.active[account.provider] == id {
+                settings.active[account.provider] = settings.accounts.first {
+                    $0.provider == account.provider && $0.id != id
+                }?.id
+            }
+            settings.accounts.removeAll { $0.id == id }
+            do { try saveOrThrow() }
+            catch {
+                settings = previousSettings
+                if !demo { try await runtime.restore(forgotten) }
+                throw error
+            }
+            readings[id] = nil
+            errors[id] = nil
+            browserAccounts.remove(id)
+            setResult(t("Removed %@: %@.", account.provider.name, account.label))
+        } catch { recordOperationFailure(error) }
     }
     func move(_ id: UUID, offset: Int) {
         guard let index = settings.accounts.firstIndex(where: { $0.id == id }) else { return }
@@ -335,11 +398,12 @@ final class AppModel: ObservableObject {
         guard let order = candidates.firstIndex(of: index), candidates.indices.contains(order + offset) else { return }
         settings.accounts.swapAt(index, candidates[order + offset]); persist()
     }
-    private func notify(_ provider: Provider, message: String) {
+    func notify(_ provider: Provider, message: String) {
         guard notifications[provider] != message else { return }
-        notifications[provider] = message; lastResult = message
+        notifications[provider] = message
+        if lastResult != message { setResult(message) }
         let content = UNMutableNotificationContent(); content.title = provider.name; content.body = self.message(message)
-        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: provider.rawValue, content: content, trigger: nil))
+        notificationSender(UNNotificationRequest(identifier: provider.rawValue, content: content, trigger: nil))
     }
     func requestNotifications() {
         guard !previewOnly else { return }

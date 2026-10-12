@@ -18,7 +18,9 @@ extension AppModel {
         text.components(separatedBy: "\n").map { L10n.translate($0) }.joined(separator: "\n")
     }
     func errorText(_ error: Error) -> String {
-        if error is AppFailure || error is KeychainAccessError || error is VaultDataError {
+        if error is AppFailure || error is KeychainAccessError || error is KeychainAuthorizationError
+            || error is KeychainPromptInProgressError || error is VaultDataError
+            || error is CodexProfileValidationError || error is CodexHandoffFailure || error is CodexLoginError {
             return error.localizedDescription
         }
         let technical = error as NSError

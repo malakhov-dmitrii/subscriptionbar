@@ -41,13 +41,17 @@ struct CompactProviderRow: View {
     private var level: UsageLevel { model.providerLevels[provider] ?? .stale }
     private var warning: Bool { account != nil && (level == .critical || level == .stale) }
     private var accessibilitySummary: String {
-        guard account != nil else { return provider.name + ", " + model.t("Not connected") }
+        guard account != nil else { return provider.name + ", " + noActiveLabel }
         guard !windows.isEmpty else { return provider.name + ", " + model.t("No data yet") }
         return ([provider.name] + windows.map { window in
             let remaining = label(window) + " " + model.t("%@%% remaining", model.percent(window.remaining))
             guard let reset = window.resetsAt else { return remaining }
             return remaining + ", " + model.t("resets %@", ResetCountdown.text(until: reset, now: model.now, language: model.language))
         } + (fresh ? [] : [model.t("Last known data · currently unverified")])).joined(separator: ", ")
+    }
+    private var noActiveLabel: String {
+        provider == .codex && model.settings.accounts.contains(where: { $0.provider == .codex })
+            ? model.t("Saved accounts · no active client login") : model.t("Not connected")
     }
     private func label(_ window: UsageWindow) -> String {
         switch window.name {
@@ -94,7 +98,7 @@ struct CompactProviderRow: View {
                         }
                         Spacer(minLength: 4)
                         if windows.isEmpty {
-                            Text(account == nil ? model.t("Not connected") : model.t("No data yet"))
+                            Text(account == nil ? noActiveLabel : model.t("No data yet"))
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.caption2).foregroundStyle(.secondary)

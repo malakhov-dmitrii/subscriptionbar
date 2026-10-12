@@ -1,5 +1,4 @@
 import Foundation
-import Security
 
 public struct ImportedAccount: Sendable {
     public var label: String
@@ -154,21 +153,14 @@ public struct ExistingAccountsImporter {
     }
 
     public static func readTrackerSecret(service: String, account: String) throws -> Data? {
-        try KeychainVault.withInteractionPolicy {
-        var failure: OSStatus?
+        var failure: Error?
         for protected in [true, false] {
-            var query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: service, kSecAttrAccount as String: account,
-                kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne,
-                kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail]
-            if protected { query[kSecUseDataProtectionKeychain as String] = true }
-            var result: CFTypeRef?
-            let status = SecItemCopyMatching(query as CFDictionary, &result)
-            if status == errSecSuccess, let data = result as? Data { return data }
-            if status != errSecItemNotFound { failure = status }
+            do {
+                if let data = try KeychainVault.read(service: service, account: account,
+                                                     useDataProtectionKeychain: protected) { return data }
+            } catch { failure = error }
         }
         if failure != nil { throw AppFailure.message("Original Tracker Keychain item is inaccessible.") }
         return nil
-        }
     }
 }

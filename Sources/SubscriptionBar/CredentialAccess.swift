@@ -1,14 +1,28 @@
 import Foundation
 import SubscriptionCore
 
+struct CredentialAuthorizationEvent: Equatable {
+    let generation: UUID
+    let target: KeychainAuthorizationTarget
+    let status: Int32
+
+    init(error: KeychainAuthorizationError, generation: UUID = UUID()) {
+        self.generation = generation
+        target = error.target
+        status = error.status
+    }
+}
+
 enum CredentialAccess: Equatable {
-    case checking, ready, locked, migration(completed: Int, total: Int), invalid, preview
+    case checking, ready, authorizationRequired(CredentialAuthorizationEvent)
+    case migration(completed: Int, total: Int), invalid, preview
+
     var permitsPolling: Bool { self == .ready }
     var title: String {
         switch self {
         case .checking: L10n.tr("Checking access")
         case .ready: L10n.tr("Access granted")
-        case .locked: L10n.tr("Account access required")
+        case .authorizationRequired: L10n.tr("Account access required")
         case .migration: L10n.tr("Moving accounts to shared storage")
         case .invalid: L10n.tr("Could not read the vault")
         case .preview: L10n.tr("Viewing saved data")
@@ -18,19 +32,34 @@ enum CredentialAccess: Equatable {
         switch self {
         case .checking: L10n.tr("No password prompt.")
         case .ready: ""
-        case .locked: L10n.tr("Monitoring and automatic switching are paused. A system prompt will appear only after you click the button.")
-        case .migration(let done, let total): L10n.tr("Prepared %@ of %@. Old records will be preserved. Each click requests access at most once.", String(done), String(total))
+        case .authorizationRequired:
+            L10n.tr("Monitoring and automatic switching are paused. A system prompt will appear only after you click the button.")
+        case .migration(let done, let total):
+            L10n.tr("Prepared %@ of %@. Old records will be preserved. Each click requests access at most once.", String(done), String(total))
         case .invalid: L10n.tr("Data has not been overwritten. Automatic recovery is disabled.")
-        case .preview: L10n.tr("These are real data from the last check. Keychain, network access, and account switching are disabled.")
+        case .preview:
+            L10n.tr("These are real data from the last check. Keychain, network access, and account switching are disabled.")
         }
     }
     var button: String? {
         switch self {
-        case .locked: L10n.tr("Allow access")
+        case .authorizationRequired: L10n.tr("Allow access")
         case .migration(let done, _): done == 0 ? L10n.tr("Move accounts") : L10n.tr("Continue migration")
         default: nil
         }
     }
+    func showsBanner(hasAccounts: Bool) -> Bool {
+        switch self {
+        case .ready: false
+        case .authorizationRequired, .invalid: true
+        case .migration: true
+        case .checking, .preview: hasAccounts
+        }
+    }
+}
+
+struct CredentialRecoveryResolvedError: Error {
+    let failure: AppFailure
 }
 
 extension AccountRuntime {
@@ -38,7 +67,8 @@ extension AccountRuntime {
         switch vault.status() {
         case .missing:
             return settings.accounts.isEmpty ? .ready : migrationProgress(settings)
-        case .locked: return .locked
+        case .authorizationRequired(let error):
+            return .authorizationRequired(CredentialAuthorizationEvent(error: error))
         case .invalid: return .invalid
         case .ready:
             do {
@@ -49,16 +79,41 @@ extension AccountRuntime {
                     if try vault.read(key) == nil { return migrationProgress(settings) }
                 }
                 return .ready
-            } catch { return .locked }
+            } catch let error as KeychainAuthorizationError {
+                return .authorizationRequired(CredentialAuthorizationEvent(error: error))
+            } catch {
+                return .invalid
+            }
         }
     }
-    /// Called only by the explicit button, never by a poll or a retry loop.
-    func authorizeAccess(settings: Settings) throws -> CredentialAccess {
+
+    /// Called only by the explicit button. The exact pending target is preserved
+    /// by AppModel until this method proves a normal no-UI read of that item.
+    func authorizeAccess(settings: Settings, event: CredentialAuthorizationEvent?) throws -> CredentialAccess {
+        if let event {
+            if case .claudeCode(let selector) = event.target {
+                let current = try CLIConnector(settings: settings, keychain: keychain).claudeKeychainSelector()
+                guard selector == current else {
+                    throw CredentialRecoveryResolvedError(failure: .concurrentChange)
+                }
+            }
+            let result = try KeychainAuthorizationCommand.authorizeAndVerify(event.target,
+                                                                              settings: settings,
+                                                                              client: keychain)
+            switch (event.target, result) {
+            case (_, .verified): return accessStatus(settings: settings)
+            case (.subscriptionVault, .missing): return migrationProgress(settings)
+            case (.subscriptionVault, .invalid): return .invalid
+            case (.subscriptionVault, .changed): throw AppFailure.concurrentChange
+            case (.claudeCode(_), .missing): throw CredentialRecoveryResolvedError(failure: .missingCredential)
+            case (.claudeCode(_), .invalid): throw CredentialRecoveryResolvedError(failure: .invalidCredential)
+            case (.claudeCode(_), .changed): throw CredentialRecoveryResolvedError(failure: .concurrentChange)
+            }
+        }
+
         switch vault.status() {
-        case .locked:
-            guard try vault.authorize() else { return migrationProgress(settings) }
-            if let entries = migration?.completedEntries { try vault.importEntries(entries) }
-            return accessStatus(settings: settings)
+        case .authorizationRequired(let error):
+            return .authorizationRequired(CredentialAuthorizationEvent(error: error))
         case .invalid: return .invalid
         case .ready, .missing:
             if case .ready = accessStatus(settings: settings) { return .ready }
@@ -89,13 +144,15 @@ extension AccountRuntime {
                 return .migration(completed: collection.completedCount, total: collection.totalCount)
             }
             try vault.importEntries(entries)
-            // Read-back each value through the noninteractive single record API.
             for (key, value) in entries {
-                guard try vault.read(key) == value else { throw AppFailure.message("Migration was not verified. Old records are preserved.") }
+                guard try vault.read(key) == value else {
+                    throw AppFailure.message("Migration was not verified. Old records are preserved.")
+                }
             }
             return .ready
         }
     }
+
     private func migrationProgress(_ settings: Settings) -> CredentialAccess {
         .migration(completed: migration?.completedCount ?? 0, total: migration?.totalCount ?? settings.accounts.count)
     }

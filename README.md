@@ -96,6 +96,77 @@ SubscriptionBar copies the credentials it finds into its own Keychain entry. It
 never asks you to type a subscription password. API-key services take the key in
 a secure field instead.
 
+If macOS later revokes access, or Claude Code replaces its Keychain item during
+token rotation, SubscriptionBar pauses and shows **Allow access**. One click reads
+only the exact failed item, then repeats the read with interaction disabled before
+monitoring resumes. Cancelling does not retry or replay the failed action.
+
+Codex limits are read with each saved account's own credentials. Changing or
+signing out of a client does not remove the other saved accounts or prevent
+their usage requests. A revoked or genuinely expired saved login still requires
+signing in again in Codex; a stored copy cannot extend its lifetime.
+
+SubscriptionBar checks configured Codex data folders for newer credentials that
+belong to a saved account. A changed OAuth subject requires matching ChatGPT user
+and workspace claims in both ID/access tokens. Updated credentials must read
+usage successfully before they replace the saved copy. The account keeps its ID
+and settings; background polling never rewrites client files or exchanges saved
+refresh tokens.
+
+### Sign in again
+
+For a saved Codex account with a login error, choose **Sign in again** on its
+expanded card. The browser flow is the default; **Sign in with code** shows a
+device code instead. Device login may need to be enabled in the ChatGPT account
+or workspace settings. Both flows use the native CLI bundled with the installed
+Codex application and an isolated temporary data folder.
+
+After sign-in, SubscriptionBar checks the saved user and workspace and reads
+fresh quota before updating the existing account. A different account is rejected.
+The current client stays open unless you select **Switch in … after sign-in**;
+that option installs the fresh login only in the selected profile. It also works
+when that profile already has the same account with expired credentials. Cancel
+is available before the save or native-switch step begins.
+
+Claude Code captures use the account UUID, email and organization returned by
+Anthropic for the captured token. Old `oauthAccount` metadata can make Claude's
+`/status` display another email; it does not override that provider identity.
+Capturing an account does not rewrite Claude Code's files. Saved switch targets
+still require a matching provider identity before their credentials are applied.
+
+### Several Codex clients
+
+In Settings → Connections → Codex client profiles, give each client a name,
+its data folder (`CODEX_HOME`) and the full path to its `.app`. Save the profiles,
+then choose the target under **Switch in**. With multiple profiles, the expanded
+Codex card also has a compact selector. A single profile needs no dashboard
+selector; data paths are shown in Settings only. Existing single-client settings keep
+their current data folder and registered Codex application.
+
+The data folder must match the one that client actually uses. Renaming an app
+to `codex2.app` does not create a separate data folder. Profiles sharing the same
+folder, including symlink aliases, are rejected. Two instances may use the same
+application when their separate data homes can be identified unambiguously.
+
+Manual and automatic switches target only the selected profile. Selecting or
+editing a profile preserves the existing automatic-switch setting. Saved accounts continue
+to be polled independently; the active marker follows the selected client's
+observed login. A signed-out or unrecognized login has no active saved account.
+Removing a client profile leaves its files and saved accounts intact.
+
+If an account is already signed in through another configured data home, select
+that profile. SubscriptionBar refuses to copy its token into a second profile.
+
+When several Codex profiles are configured, native switches leave browser
+sessions unchanged. Browser cookies are saved per account and are not bound to
+a native profile. Single-profile setups retain the optional browser-session
+switch, including the existing browser account setting.
+
+Native switching requires file-backed `auth.json`. Explicit `keyring`, `auto` and `ephemeral`
+credential stores are unsupported. Ambiguous running instances stop the switch.
+Multi-instance switching is tested with disposable fixtures; switching live user
+accounts and resuming their tasks have not been verified end to end.
+
 Accounts you have saved are listed in order of priority. That order is what
 rotation follows when one runs out.
 
@@ -105,7 +176,12 @@ rotation follows when one runs out.
 
 For browser sessions, Settings → Connections walks through the three steps: run
 the installer once, load the extension folder, then save a session per account.
-The companion extension saves one website session per account:
+The companion extension saves one website session per account.
+
+These cookies are for browser sessions. Saving a ChatGPT browser session does
+not capture or renew Codex native OAuth credentials. If a browser session expires,
+sign in on the website and capture it again; if the native login expires, sign in
+in Codex and save that account with `+`.
 
 <p align="center">
   <img src="docs/images/extension.png" width="330" alt="Browser extension popup showing a green Connected status, an account picker and a save button">

@@ -2,17 +2,40 @@ import Foundation
 import SubscriptionCore
 
 enum ImportCommand {
-    static func run(importAccounts: Bool, enableAutomation: Bool = false) async {
-        let store = LocalStore(), vault = KeychainVault(), runtime = AccountRuntime()
+    static func run(importAccounts: Bool, enableAutomation: Bool = false,
+                    store: LocalStore = LocalStore(), vault suppliedVault: KeychainVault? = nil) async {
+        let vault = suppliedVault ?? KeychainVault(root: store.root)
+        let runtime = AccountRuntime(store: store, vault: vault)
         do {
             var expected = try SecureFiles.read(store.settingsURL)
             var settings = try store.loadSettings()
+            var codexRecoveryFailure: String?
+            do {
+                let synchronized = try await runtime.synchronizeCodex(settings: settings, expected: expected)
+                settings = synchronized.settings; expected = synchronized.settingsData
+                let observation = settings.selectedCodexProfile.flatMap { synchronized.observations[$0.id] }
+                let active = observation?.issue == nil ? observation?.accountID : nil
+                if settings.active[.codex] != active {
+                    settings.active[.codex] = active
+                    expected = try store.saveSettings(settings, expected: expected)
+                }
+            } catch {
+                if let data = try? SecureFiles.read(store.settingsURL),
+                   let latest = try? JSONDecoder().decode(Settings.self, from: data) {
+                    settings = latest; expected = data
+                }
+                codexRecoveryFailure = error.localizedDescription
+                print("CODEX_RECOVERY_UNAVAILABLE \(error.localizedDescription)")
+            }
             if importAccounts {
                 // Persist the migration pause before saving any account. No live client
                 // is switched by discovery, import, or this read-only quota check.
                 settings.automationPausedReason = "Импортированы реальные аккаунты. Проверяем лимиты перед включением автосмены."
                 expected = try store.saveSettings(settings, expected: expected)
-                var report = ExistingAccountsImporter().discoverReport(settings: settings)
+                let discoverySettings = settings.selectedCodexProfile.map { settings.settings(forCodexProfile: $0) } ?? settings
+                var report = ExistingAccountsImporter().discoverReport(settings: discoverySettings)
+                // Do not import an ambiguous Codex binding or suppress other providers.
+                if codexRecoveryFailure != nil { report.accounts.removeAll { $0.provider == .codex } }
                 // A matching organization alone is not a matching user. Bind the
                 // Tracker session only after its server confirms the CLI user's
                 // email AND membership in that exact organization.
@@ -39,7 +62,29 @@ enum ImportCommand {
                 // Remove an earlier imported monitor-only duplicate only after the
                 // server-verified pairing above. Original trackers stay untouched.
                 settings.accounts.removeAll { $0.monitoringOnly == true && linkedWebIdentities.contains($0.identity) }
+                var codexImportStopped = false
                 for item in report.accounts {
+                    if item.provider == .codex {
+                        guard !codexImportStopped else { continue }
+                        // Commit preceding non-Codex imports before this per-account
+                        // transaction so recovery can reload a complete baseline.
+                        expected = try store.saveSettings(settings, expected: expected)
+                        do {
+                            let result = try CodexCredentialMerge.commit(incoming: item.credential, label: item.label,
+                                makeActive: item.isActive, settings: settings, expected: expected, store: store, vault: vault)
+                            settings = result.settings; expected = result.settingsData
+                        } catch {
+                            report.warnings.append("A Codex import was skipped to preserve the saved login. Refresh or save its current login and retry.")
+                            let actual = try SecureFiles.read(store.settingsURL)
+                            if actual != expected {
+                                guard let actual else { throw AppFailure.concurrentChange }
+                                settings = try JSONDecoder().decode(Settings.self, from: actual)
+                                expected = actual
+                                codexImportStopped = true
+                            }
+                        }
+                        continue
+                    }
                     var account = settings.accounts.first { $0.provider == item.provider && $0.identity == item.credential.identity }
                         ?? Account(provider: item.provider, label: item.label, identity: item.credential.identity)
                     account.monitoringOnly = item.monitoringOnly
@@ -90,6 +135,7 @@ enum ImportCommand {
             print("IMPORT_FAILED \(error.localizedDescription)")
         }
     }
+
 }
 
 struct LiveCache: Codable {

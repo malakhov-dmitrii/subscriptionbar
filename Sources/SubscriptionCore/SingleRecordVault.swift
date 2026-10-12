@@ -1,7 +1,9 @@
 import Foundation
 import Darwin
 
-public enum VaultStatus: Equatable, Sendable { case ready, missing, locked, invalid }
+public enum VaultStatus: Equatable, Sendable {
+    case ready, missing, authorizationRequired(KeychainAuthorizationError), invalid
+}
 public enum VaultDataError: Error, LocalizedError, Sendable {
     case invalidRecord, unsupportedVersion
     public var errorDescription: String? {
@@ -39,6 +41,15 @@ public struct SingleRecordVault: SecretStoring {
             try save(record)
         }
     }
+    public func compareAndSwap(key: String, expected: Data?, data: Data?) throws {
+        try withLock {
+            var record = try load(allowUserInteraction: false) ?? Record()
+            guard record.entries[key] == expected else { throw AppFailure.concurrentChange }
+            guard record.entries[key] != data else { return }
+            record.entries[key] = data
+            try save(record)
+        }
+    }
     public func remove(_ key: String) throws {
         try withLock {
             guard var record = try load(allowUserInteraction: false), record.entries.removeValue(forKey: key) != nil else { return }
@@ -50,7 +61,8 @@ public struct SingleRecordVault: SecretStoring {
     public func status() -> VaultStatus {
         do { return try load(allowUserInteraction: false) == nil ? .missing : .ready }
         catch is VaultDataError { return .invalid }
-        catch { return .locked }
+        catch let error as KeychainAuthorizationError { return .authorizationRequired(error) }
+        catch { return .invalid }
     }
     /// A single locked merge writes only vault-v1; it never reads or deletes legacy items.
     public func importEntries(_ entries: [String: Data]) throws {
@@ -66,6 +78,15 @@ public struct SingleRecordVault: SecretStoring {
     }
     private func load(allowUserInteraction: Bool) throws -> Record? {
         guard let data = try raw.read(service: service, account: Self.account, allowUserInteraction: allowUserInteraction) else { return nil }
+        return try Self.decodeRecord(data)
+    }
+
+    static func recordIdentity(_ data: Data) throws -> String {
+        _ = try decodeRecord(data)
+        return SecureFiles.digest(data)
+    }
+
+    private static func decodeRecord(_ data: Data) throws -> Record {
         let record: Record
         do { record = try JSONDecoder().decode(Record.self, from: data) }
         catch { throw VaultDataError.invalidRecord }

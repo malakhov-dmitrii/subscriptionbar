@@ -116,6 +116,9 @@ public struct Settings: Codable, Sendable {
     public var warnThreshold: Double?
     public var claudeHome = "~/.claude"
     public var codexHome = "~/.codex"
+    /// Nil preserves the legacy single-client configuration; an empty list disables client targets.
+    public var codexClientProfiles: [CodexClientProfile]?
+    public var selectedCodexClientID: UUID?
     public var grokHome = "~/.grok"
     public var lastSwitch: [Provider: Date] = [:]
     public var automationPausedReason: String?

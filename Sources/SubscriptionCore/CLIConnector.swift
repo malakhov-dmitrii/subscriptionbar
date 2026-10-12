@@ -2,7 +2,11 @@ import Foundation
 
 public struct CLIConnector: Sendable {
     public let settings: Settings
-    public init(settings: Settings) { self.settings = settings }
+    public let keychain: KeychainClient
+    public init(settings: Settings, keychain: KeychainClient = .system) {
+        self.settings = settings
+        self.keychain = keychain
+    }
     public func home(_ provider: Provider) throws -> URL {
         let path: String
         switch provider {
@@ -21,11 +25,10 @@ public struct CLIConnector: Sendable {
         case .claude:
             let config = try claudeConfig(root)
             let metadata = try JSONValue.parse(config.data)["oauthAccount"]
-            let hashedService = "Claude Code-credentials-" + SecureFiles.digest(Data(root.path.utf8)).prefix(8)
-            let defaultRoot = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude").standardizedFileURL
-            let service = root == defaultRoot ? "Claude Code-credentials" : String(hashedService)
-            if let raw = try KeychainVault.read(service: service, account: NSUserName()) {
-                return try CredentialParser.parse(provider: provider, data: raw, metadata: metadata, keychainService: service)
+            let selector = try claudeKeychainSelector()
+            if let raw = try keychain.read(selector, target: .claudeCode(selector)) {
+                return try CredentialParser.parse(provider: provider, data: raw, metadata: metadata,
+                                                  keychainService: selector.service)
             }
             guard let raw = try SecureFiles.read(root.appendingPathComponent(".credentials.json")) else { throw AppFailure.missingCredential }
             return try CredentialParser.parse(provider: provider, data: raw, metadata: metadata)
@@ -34,14 +37,43 @@ public struct CLIConnector: Sendable {
                let text = String(data: config, encoding: .utf8),
                text.split(separator: "\n").contains(where: {
                    let line = $0.trimmingCharacters(in: .whitespaces)
-                   return !line.hasPrefix("#") && line.hasPrefix("cli_auth_credentials_store") && (line.contains("keyring") || line.contains("auto"))
+                   guard !line.hasPrefix("#") else { return false }
+                   let assignment = line.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+                   guard assignment.count == 2,
+                         assignment[0].trimmingCharacters(in: .whitespaces) == "cli_auth_credentials_store" else { return false }
+                   let value = assignment[1].split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)[0]
+                       .trimmingCharacters(in: .whitespaces)
+                   return value != "\"file\"" && value != "'file'"
                }) {
-                throw AppFailure.unsupported("Codex uses keyring/auto credential storage. File switching cannot be verified for this configuration.")
+                throw AppFailure.unsupported("Codex uses non-file credential storage. File switching cannot be verified for this configuration.")
             }
             guard let raw = try SecureFiles.read(root.appendingPathComponent("auth.json")) else { throw AppFailure.missingCredential }
             return try CredentialParser.parse(provider: provider, data: raw)
         default: throw AppFailure.unsupported("Add an API key in the account form.")
         }
+    }
+
+    public func claudeKeychainSelector() throws -> KeychainItemSelector {
+        let root = try home(.claude)
+        let hashedService = "Claude Code-credentials-" + SecureFiles.digest(Data(root.path.utf8)).prefix(8)
+        let defaultRoot = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude").standardizedFileURL
+        let service = root == defaultRoot ? "Claude Code-credentials" : String(hashedService)
+        return KeychainItemSelector(service: service, account: NSUserName())
+    }
+
+    public func authorizeClaudeKeychain(_ selector: KeychainItemSelector) throws -> KeychainVerificationResult {
+        guard selector == (try claudeKeychainSelector()) else { throw AppFailure.concurrentChange }
+        return try keychain.authorizeAndVerify(selector) { data in
+            try claudeCredentialIdentity(data, selector: selector)
+        }
+    }
+
+    public func claudeCredentialIdentity(_ data: Data, selector: KeychainItemSelector) throws -> String {
+        guard selector == (try claudeKeychainSelector()) else { throw AppFailure.concurrentChange }
+        let config = try claudeConfig(try home(.claude))
+        let metadata = try JSONValue.parse(config.data)["oauthAccount"]
+        return try CredentialParser.parse(provider: .claude, data: data, metadata: metadata,
+                                          keychainService: selector.service).identity
     }
     private func claudeConfig(_ root: URL) throws -> (url: URL, data: Data) {
         let defaultHome = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude")
@@ -57,11 +89,13 @@ public struct CLIConnector: Sendable {
         var changes: [Mutation] = []
         if provider == .claude {
             if let service = current.keychainService {
+                let selector = KeychainItemSelector(service: service, account: NSUserName())
+                let authorizationTarget = KeychainAuthorizationTarget.claudeCode(selector)
                 changes.append(Mutation(name: "Claude Keychain", before: current.primary, after: target.primary,
-                    read: { try KeychainVault.read(service: service, account: NSUserName()) }, replace: { data, expected in
-                        guard try KeychainVault.read(service: service, account: NSUserName()) == expected else { throw AppFailure.concurrentChange }
+                    read: { try keychain.read(selector, target: authorizationTarget) }, replace: { data, expected in
+                        guard try keychain.read(selector, target: authorizationTarget) == expected else { throw AppFailure.concurrentChange }
                         guard let data else { throw AppFailure.message("Cannot remove the client's Keychain item.") }
-                        try KeychainVault.write(service: service, account: NSUserName(), data: data)
+                        try keychain.write(selector, data: data, target: authorizationTarget)
                     }))
             }
             let credentialFile = try Mutation.file(root.appendingPathComponent(".credentials.json"), after: target.primary)

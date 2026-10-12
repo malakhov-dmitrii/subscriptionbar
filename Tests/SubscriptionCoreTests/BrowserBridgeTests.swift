@@ -9,6 +9,12 @@ final class BrowserBridgeTests: XCTestCase {
         func read(_ key: String) throws -> Data? { lock.lock(); defer { lock.unlock() }; return data[key] }
         func write(_ key: String, data value: Data) throws { lock.lock(); defer { lock.unlock() }; data[key] = value }
         func remove(_ key: String) throws { lock.lock(); defer { lock.unlock() }; data.removeValue(forKey: key) }
+        func compareAndSwap(key: String, expected: Data?, data value: Data?) throws {
+            try lock.withLock {
+                guard data[key] == expected else { throw AppFailure.concurrentChange }
+                data[key] = value
+            }
+        }
     }
     struct Fixture {
         let directory: URL

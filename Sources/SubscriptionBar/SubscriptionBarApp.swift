@@ -1,3 +1,4 @@
+import Darwin
 import SwiftUI
 import SubscriptionCore
 
@@ -10,6 +11,9 @@ enum Launcher {
         let language = (try? LocalStore().loadSettings().language) ?? AppLanguage.preferred
         L10n.language = language
         UserDefaults.standard.set([language.rawValue], forKey: "AppleLanguages")
+        if KeychainAuthorizationCommand.isHelper {
+            exit(KeychainAuthorizationCommand.runHelper())
+        }
         do { try KeychainVault.disableAutomaticInteraction() }
         catch {
             try? FileHandle.standardError.write(contentsOf: Data("SubscriptionBar stopped: could not disable automatic Keychain dialogs.\n".utf8))
@@ -30,6 +34,10 @@ struct SubscriptionBarApp: App {
     @StateObject private var model: AppModel
     init() {
         let state = AppModel(demo: CommandLine.arguments.contains("--demo"), previewOnly: Launcher.isReadOnlyPreview)
+        if state.demo, CommandLine.arguments.contains("--demo-codex-reauth"),
+           let account = state.settings.accounts.first(where: { $0.provider == .codex }) {
+            state.errors[account.id] = L10n.tr("This saved Codex login has expired. Sign in to that account in Codex, then save it again in SubscriptionBar.")
+        }
         _model = StateObject(wrappedValue: state)
         SubscriptionDelegate.model = state
     }
@@ -59,6 +67,25 @@ final class SubscriptionDelegate: NSObject, NSApplicationDelegate, NSWindowDeleg
     private static weak var current: SubscriptionDelegate?
     private static var dashboard: NSWindow?
     private static var accountWindow: NSWindow?
+    private var terminationTask: Task<Void, Never>?
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard terminationTask == nil else { return .terminateLater }
+        guard let recovery = Self.model?.codexReauthentication else {
+            return .terminateNow
+        }
+        switch recovery.phase {
+        case .saving, .switching: return .terminateCancel
+        default: break
+        }
+        terminationTask = Task { [weak self] in
+            let cleaned = await recovery.prepareForAppTermination()
+            guard let self else { sender.reply(toApplicationShouldTerminate: false); return }
+            let safe = cleaned && Self.model?.codexReauthentication == nil
+            terminationTask = nil
+            sender.reply(toApplicationShouldTerminate: safe)
+        }
+        return .terminateLater
+    }
     func applicationDidFinishLaunching(_ notification: Notification) {
         Self.current = self
         if !CommandLine.arguments.contains("--background") { Self.showDashboard() }

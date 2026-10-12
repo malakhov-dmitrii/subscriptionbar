@@ -42,6 +42,11 @@ public enum SecureFiles {
 public protocol SecretStoring: Sendable {
     func read(_ key: String) throws -> Data?
     func write(_ key: String, data: Data) throws
+    /// Atomically compares one entry and replaces/removes it without losing other entries.
+    /// `expected == nil` requires absence; `data == nil` removes a matching entry.
+    /// Implementations must use the same lock/transaction for comparison and write;
+    /// a separate read followed by write does not satisfy this contract.
+    func compareAndSwap(key: String, expected: Data?, data: Data?) throws
     func remove(_ key: String) throws
 }
 

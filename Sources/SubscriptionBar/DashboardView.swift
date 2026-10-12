@@ -9,10 +9,10 @@ struct DashboardView: View {
     private var balanceProviders: [Provider] {
         Provider.allCases.filter { model.settings.enabledProviders.contains($0) && $0.usesBalance }
     }
-    /// The access banner is about moving existing secrets. With nothing saved
-    /// there is nothing to move, and a security prompt is the wrong first screen.
+    /// First-run migration may depend on saved accounts, but an authorization
+    /// failure can happen while capturing the very first external account.
     private var showsAccessBanner: Bool {
-        model.credentialAccess != .ready && !model.settings.accounts.isEmpty
+        model.credentialAccess.showsBanner(hasAccounts: !model.settings.accounts.isEmpty)
     }
     private var showsOnboarding: Bool {
         model.settings.accounts.isEmpty && !model.previewOnly
@@ -140,7 +140,7 @@ struct DashboardView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
-            Button { model.lastResult = "" } label: { Image(systemName: "xmark") }
+            Button { model.dismissResult() } label: { Image(systemName: "xmark") }
                 .buttonStyle(.borderless).font(.caption2)
                 .help(model.t("Dismiss")).accessibilityLabel(model.t("Dismiss"))
         }.padding(10)
@@ -161,6 +161,14 @@ struct ProviderCard: View {
                 Button { NSWorkspace.shared.open(provider.website) } label: { Image(systemName: "arrow.up.right") }
                     .buttonStyle(.borderless).help(model.t("Open %@", provider.name))
                     .accessibilityLabel(model.t("Open %@", provider.name))
+            }
+            if provider == .codex {
+                CodexProfilePicker(settings: model.settings, select: model.selectCodexProfile)
+                    .disabled(model.busy || model.previewOnly)
+                if let issue = model.codexProfileIssue {
+                    Text(issue).font(.caption).foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
             if accounts.isEmpty {
                 HStack {
@@ -191,8 +199,12 @@ struct ProviderCard: View {
 
     private func switchWarning(_ target: Account) -> String {
         var lines = [model.t("This rewrites the sign-in used by the client on this Mac.")]
-        if provider == .codex { lines.append(model.t("Codex will be asked to quit and reopen.")) }
-        if target.browserEnabled { lines.append(model.t("The saved browser session will be applied.")) }
+        if provider == .codex {
+            lines.append(model.t("Only the selected Codex profile will be asked to quit and reopen: %@.", model.settings.selectedCodexProfile?.name ?? "—"))
+        }
+        if target.browserEnabled && (provider != .codex || model.settings.effectiveCodexProfiles.count == 1) {
+            lines.append(model.t("The saved browser session will be applied."))
+        }
         return lines.joined(separator: " ")
     }
 
@@ -212,6 +224,9 @@ struct ProviderCard: View {
                     Button(model.t("Switch")) { pendingSwitch = account }
                         .controlSize(.small)
                         .disabled(model.busy || model.errors[account.id] != nil || !model.credentialAccess.permitsPolling)
+                        .disabled(provider == .codex && (model.settings.selectedCodexProfile == nil || model.codexAccountsOwnedElsewhere.contains(account.id)))
+                        .help(provider == .codex && model.codexAccountsOwnedElsewhere.contains(account.id)
+                              ? model.t("Select the Codex profile already using this account.") : model.t("Switch account"))
                 }
             }
             if let snapshot {
@@ -252,6 +267,11 @@ struct ProviderCard: View {
             }
             if let error = model.errors[account.id] {
                 Text(model.message(error)).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                if provider == .codex && account.canSwitch {
+                    Button(model.t("Sign in again")) { model.beginCodexReauthentication(account.id) }
+                        .controlSize(.small)
+                        .disabled(model.busy || model.previewOnly || !model.credentialAccess.permitsPolling)
+                }
             }
         }
     }
@@ -306,6 +326,9 @@ struct AddAccountView: View {
                     }
                 }
             }
+            if provider == .codex {
+                CodexProfilePicker(settings: model.settings, select: model.selectCodexProfile).disabled(model.busy)
+            }
             Text(guidance).font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -327,7 +350,7 @@ struct AddAccountView: View {
                     .disabled(blocker != nil || model.busy)
             }
         // A fixed height keeps the window from jumping when the service changes.
-        }.padding(24).frame(width: 470, height: 430, alignment: .topLeading).textFieldStyle(.roundedBorder)
+        }.padding(24).frame(width: 470, height: 500, alignment: .topLeading).textFieldStyle(.roundedBorder)
         .environment(\.locale, model.locale)
             .onAppear { nameFocused = true }
             .onChange(of: provider) { apiKey = ""; formError = nil }

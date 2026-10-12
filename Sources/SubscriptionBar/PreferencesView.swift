@@ -218,6 +218,11 @@ struct PreferencesView: View {
                 Toggle(model.t("Switch the saved browser session"), isOn: Binding(
                     get: { model.settings.accounts.first(where: { $0.id == account.id })?.browserEnabled ?? false },
                     set: { model.browser(account.id, enabled: $0) }))
+                    .disabled(account.provider == .codex && model.settings.effectiveCodexProfiles.count > 1)
+                if account.provider == .codex && model.settings.effectiveCodexProfiles.count > 1 {
+                    Text(model.t("Browser sessions stay unchanged when switching among multiple Codex profiles."))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Label(model.browserAccounts.contains(account.id) ? model.t("Browser session saved")
                       : model.t("Save a session using the browser extension"),
                       systemImage: model.browserAccounts.contains(account.id) ? "checkmark.circle" : "circle.dashed")
@@ -239,6 +244,9 @@ struct PreferencesView: View {
 
     private var connectionsTab: some View {
         Form {
+            CodexProfilesView(settings: model.settings) { profiles, selected in
+                try model.saveCodexProfiles(profiles, selected: selected)
+            }
             Section(model.t("Browser")) {
                 LabeledContent(model.t("Connection")) {
                     if model.nativeHostInstalled {
@@ -259,6 +267,8 @@ struct PreferencesView: View {
                 Button(model.t("Open extension folder")) { openResource("browser-extension") }
                 Text(model.t("Step 3: in the extension, choose an account and save its current session."))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(model.t("Saved browser cookies do not renew native Codex tokens or its quota access."))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Text(model.t("Firefox uses the firefox subfolder of the extension and needs its own unsigned install step."))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
@@ -271,7 +281,6 @@ struct PreferencesView: View {
             }
             Section(model.t("CLI folders")) {
                 pathRow("Claude", text: $model.settings.claudeHome)
-                pathRow("Codex", text: $model.settings.codexHome)
                 pathRow("Grok", text: $model.settings.grokHome)
                 Text(model.t("Paths must match the configuration of the clients you launch."))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -306,7 +315,7 @@ struct PreferencesView: View {
 
     private func openResource(_ name: String) {
         guard let url = Bundle.main.resourceURL?.appendingPathComponent(name), FileManager.default.fileExists(atPath: url.path) else {
-            model.lastResult = model.t("Open the packaged SubscriptionBar.app to install the extension."); return
+            model.setResult(model.t("Open the packaged SubscriptionBar.app to install the extension.")); return
         }
         NSWorkspace.shared.open(url)
     }
