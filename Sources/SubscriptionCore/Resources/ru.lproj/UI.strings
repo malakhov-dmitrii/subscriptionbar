@@ -48,6 +48,8 @@
 "Plan" = "Тариф";
 "Spending limit" = "Лимит расходов";
 "On-demand" = "Сверх тарифа";
+"Cursor models" = "Модели Cursor";
+"Other models" = "Другие модели";
 "<1m" = "<1мин";
 "5h" = "5ч";
 "wk" = "нед";
@@ -98,7 +100,7 @@
 "Set up browser connection…" = "Настроить связь с браузером…";
 "Settings" = "Настройки";
 "Settings could not be loaded." = "Не удалось загрузить настройки.";
-"Shows enabled services and active accounts. The percentage is the lowest remaining limit; balances use the service currency. “—” means no fresh data. Turn everything off to show only the icon." = "Показываются включённые сервисы и активные аккаунты. Процент — минимальный остаток среди лимитов; баланс — в валюте сервиса. «—» означает, что свежих данных нет. Отключите всё, чтобы оставить только значок.";
+"Shows enabled services and active accounts. Plans with a 5-hour and a weekly limit show both remaining percentages, 5-hour on top; other services show the lowest remaining limit. Balances use the service currency. “—” means no fresh data. Turn everything off to show only the icon." = "Показываются включённые сервисы и активные аккаунты. Если у тарифа есть 5-часовой и недельный лимиты, видны оба остатка: 5-часовой сверху. У остальных сервисов процент — минимальный остаток среди лимитов. Баланс — в валюте сервиса. «—» означает, что свежих данных нет. Отключите всё, чтобы оставить только значок.";
 "Sign in to %@, then save the current account here. Repeat sign-in and saving for another account." = "Войдите в %@, затем сохраните текущий логин здесь. Для второго аккаунта повторите вход и сохранение.";
 "Sign-in file; running process unverified" = "Файл логина; текущий процесс не подтверждён";
 "Sign-in updated: %@." = "Логин обновлён: %@.";
@@ -170,6 +172,7 @@
 "Customize Toolbar…" = "Настроить панель инструментов…";
 "SubscriptionBar Help" = "Справка SubscriptionBar";
 "no fresh data" = "нет свежих данных";
+"data is delayed" = "данные с задержкой";
 "%@ remaining" = "осталось %@";
 "needs attention" = "требует внимания";
 "%@ was switched back on in Settings." = "Сервис %@ снова включён в настройках.";

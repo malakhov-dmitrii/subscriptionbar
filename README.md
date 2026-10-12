@@ -10,13 +10,16 @@ One macOS menu bar icon for the limits of every AI subscription you already pay 
 Screenshots below are demo mode (`--demo`): the data in them is invented.
 
 <p align="center">
-  <img src="docs/images/menubar.png" width="300" alt="Menu bar showing a warning triangle, C33%, !X1% and G68%">
+  <img src="docs/images/menubar.png" width="410" alt="Menu bar showing a warning triangle, then C, !X and G, each with a 5h value above a wk value">
 </p>
 
 `C` is Claude, `X` is Codex, `G` is Grok. Numbers are what is **left**, not what
-is used. A `!` marks the service that is about to run out; the icon changes too,
-because macOS renders menu bar text as a monochrome template and colour would be
-stripped.
+is used. A plan with both a 5-hour and a weekly limit shows both, labelled `5h`
+on top and `wk` below; other services show their lowest remaining limit. A `!`
+marks the service that is about to run out; the icon changes too, because macOS
+renders menu bar text as a monochrome template and colour would be stripped.
+When a service asks the app to slow down, the last numbers stay up, dimmed once
+they are a few minutes old. `—` means there is no fresh reading.
 
 <p align="center">
   <img src="docs/images/dashboard.png" width="430" alt="The dashboard listing Claude, Codex, Grok and balances, with Codex at 1% in red">

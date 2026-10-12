@@ -211,7 +211,7 @@ struct ProviderCard: View {
     @ViewBuilder private func accountSection(_ account: Account) -> some View {
         let isActive = model.settings.active[provider] == account.id
         let snapshot = model.readings[account.id]
-        let stale = snapshot.map { !$0.isFresh(at: model.now) } ?? true || model.errors[account.id] != nil
+        let stale = model.readingState(account.id) != .current
         VStack(alignment: .leading, spacing: 7) {
             HStack {
                 Circle().fill(isActive ? Color.green : Color.secondary.opacity(0.3))

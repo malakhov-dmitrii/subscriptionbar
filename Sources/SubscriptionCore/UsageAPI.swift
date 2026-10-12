@@ -46,14 +46,36 @@ public struct UsageAPI: Sendable {
         } catch {
             throw AppFailure.message("\(credential.provider.name): usage request failed. Check connectivity and sign-in.")
         }
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            if credential.provider == .claude && credential.claudeSessionKey == nil {
-                throw AppFailure.message("Claude OAuth usage is unavailable. Connect a Claude browser session to read limits.")
-            }
+        guard let http = response as? HTTPURLResponse else {
             throw AppFailure.message("\(credential.provider.name): usage service rejected the request. Check account access.")
         }
+        guard http.statusCode == 200 else { throw Self.rejection(http, credential: credential) }
         return try Self.parse(provider: credential.provider, data: data,
                               source: request.url?.absoluteString ?? credential.provider.name)
+    }
+
+    /// A 429 is a request to slow down, not a broken login, so callers can keep
+    /// the last reading and wait instead of reporting the account as failed.
+    static func rejection(_ http: HTTPURLResponse, credential: UsageCredential, now: Date = Date()) -> AppFailure {
+        if http.statusCode == 429 {
+            return .rateLimited(credential.provider, retryAfter: retryAfter(http.value(forHTTPHeaderField: "Retry-After"), now: now))
+        }
+        if credential.provider == .claude && credential.claudeSessionKey == nil {
+            return .message("Claude OAuth usage is unavailable. Connect a Claude browser session to read limits.")
+        }
+        return .message("\(credential.provider.name): usage service rejected the request. Check account access.")
+    }
+
+    /// Retry-After is either delay seconds or an HTTP date (RFC 9110).
+    static func retryAfter(_ value: String?, now: Date) -> TimeInterval? {
+        guard let value = value?.trimmingCharacters(in: .whitespaces), !value.isEmpty else { return nil }
+        if let seconds = TimeInterval(value) { return seconds.isFinite && seconds >= 0 ? seconds : nil }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "GMT")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        guard let date = formatter.date(from: value) else { return nil }
+        return max(0, date.timeIntervalSince(now))
     }
 
     static func request(_ credential: UsageCredential) throws -> URLRequest {

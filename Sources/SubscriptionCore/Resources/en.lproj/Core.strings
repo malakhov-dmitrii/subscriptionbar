@@ -1,5 +1,6 @@
 "%@: usage request failed. Check connectivity and sign-in." = "%@: usage request failed. Check connectivity and sign-in.";
 "%@: usage service rejected the request. Check account access." = "%@: usage service rejected the request. Check account access.";
+"%@: the usage service is temporarily limiting requests. Try again in a few minutes." = "%@: the usage service is temporarily limiting requests. Try again in a few minutes.";
 "A browser with this account's saved session is offline. Open it before switching." = "A browser with this account's saved session is offline. Open it before switching.";
 "Access granted" = "Access granted";
 "Account access required" = "Account access required";

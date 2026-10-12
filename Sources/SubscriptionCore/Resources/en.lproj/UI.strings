@@ -48,6 +48,8 @@
 "Plan" = "Plan";
 "Spending limit" = "Spending limit";
 "On-demand" = "On-demand";
+"Cursor models" = "Cursor models";
+"Other models" = "Other models";
 "<1m" = "<1m";
 "5h" = "5h";
 "wk" = "wk";
@@ -98,7 +100,7 @@
 "Set up browser connection…" = "Set up browser connection…";
 "Settings" = "Settings";
 "Settings could not be loaded." = "Settings could not be loaded.";
-"Shows enabled services and active accounts. The percentage is the lowest remaining limit; balances use the service currency. “—” means no fresh data. Turn everything off to show only the icon." = "Shows enabled services and active accounts. The percentage is the lowest remaining limit; balances use the service currency. “—” means no fresh data. Turn everything off to show only the icon.";
+"Shows enabled services and active accounts. Plans with a 5-hour and a weekly limit show both remaining percentages, 5-hour on top; other services show the lowest remaining limit. Balances use the service currency. “—” means no fresh data. Turn everything off to show only the icon." = "Shows enabled services and active accounts. Plans with a 5-hour and a weekly limit show both remaining percentages, 5-hour on top; other services show the lowest remaining limit. Balances use the service currency. “—” means no fresh data. Turn everything off to show only the icon.";
 "Sign in to %@, then save the current account here. Repeat sign-in and saving for another account." = "Sign in to %@, then save the current account here. Repeat sign-in and saving for another account.";
 "Sign-in file; running process unverified" = "Sign-in file; running process unverified";
 "Sign-in updated: %@." = "Sign-in updated: %@.";
@@ -170,6 +172,7 @@
 "Customize Toolbar…" = "Customize Toolbar…";
 "SubscriptionBar Help" = "SubscriptionBar Help";
 "no fresh data" = "no fresh data";
+"data is delayed" = "data is delayed";
 "%@ remaining" = "%@ remaining";
 "needs attention" = "needs attention";
 "%@ was switched back on in Settings." = "%@ was switched back on in Settings.";

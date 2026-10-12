@@ -19,6 +19,7 @@ final class AppModel: ObservableObject {
     @Published var confirmLegacyQuit = false
     @Published var codexObservations: [UUID: CodexProfileObservation] = [:]
     @Published var codexReauthentication: CodexReauthenticationController?
+    @Published private(set) var pacing: [UUID: UsagePacing] = [:]
 
     enum NotificationStatus: Sendable { case unknown, notAsked, allowed, denied }
     let demo: Bool
@@ -42,20 +43,32 @@ final class AppModel: ObservableObject {
         Provider.allCases.filter { menuBarProviders.contains($0) && settings.enabledProviders.contains($0) }.map { provider in
             let id = settings.active[provider]
             let failed = !credentialAccess.permitsPolling || id.map { errors[$0] != nil } == true
+            let paced = id.map { pacing[$0] != nil } == true
             let snapshot = id.flatMap { readings[$0] }
             let account = id.flatMap { active in settings.accounts.first { $0.id == active } }
             return MenuBarEntry(provider: provider, label: MenuBarSummary.label(provider),
-                                value: MenuBarSummary.value(snapshot, failed: failed, now: now),
-                                level: MenuBarSummary.level(snapshot, failed: failed, account: account,
-                                                            settings: settings, now: now))
+                                value: MenuBarSummary.value(snapshot, failed: failed, paced: paced, now: now),
+                                rows: MenuBarSummary.rows(snapshot, failed: failed, paced: paced, now: now),
+                                level: MenuBarSummary.level(snapshot, failed: failed, paced: paced, account: account,
+                                                            settings: settings, now: now),
+                                delayed: id.map { readingState($0) == .delayed } == true)
         }
     }
     var menuBarText: String { menuBarEntries.map(\.text).joined(separator: " ") }
     var menuBarAccessibilitySummary: String {
+        func spoken(_ value: String) -> String { value == "—" ? t("no fresh data") : t("%@ remaining", value) }
         let parts = menuBarEntries.map { entry in
-            entry.provider.name + " " + (entry.value == "—" ? t("no fresh data") : t("%@ remaining", entry.value))
+            entry.provider.name + " " + (entry.rows.isEmpty ? spoken(entry.value)
+                : entry.rows.map { $0.spokenWindow + " " + spoken($0.value) }.joined(separator: ", "))
+                + (entry.delayed ? ", " + t("data is delayed") : "")
         }
         return (["SubscriptionBar"] + parts + (needsAttention ? [t("needs attention")] : [])).joined(separator: ", ")
+    }
+    /// What the interface may show for an account; automatic switching ignores
+    /// pacing and still requires a reading younger than 90 seconds.
+    func readingState(_ id: UUID) -> ReadingState {
+        ReadingFreshness.state(readings[id], failed: !credentialAccess.permitsPolling || errors[id] != nil,
+                               paced: pacing[id] != nil, now: now)
     }
     /// Severity per provider, shared by the compact row, the card and the icon.
     var providerLevels: [Provider: UsageLevel] {
@@ -64,7 +77,7 @@ final class AppModel: ObservableObject {
             guard let id = settings.active[provider] else { continue }
             let failed = !credentialAccess.permitsPolling || errors[id] != nil
             let account = settings.accounts.first { $0.id == id }
-            result[provider] = MenuBarSummary.level(readings[id], failed: failed, account: account,
+            result[provider] = MenuBarSummary.level(readings[id], failed: failed, paced: pacing[id] != nil, account: account,
                                                     settings: settings, now: now)
         }
         return result
@@ -196,8 +209,10 @@ final class AppModel: ObservableObject {
         busy = true; defer { busy = false; now = Date() }
         await synchronizeCodexProfiles()
         guard credentialAccess.permitsPolling else { return }
+        let started = Date()
         let accounts = settings.accounts.filter {
             $0.enabled && settings.enabledProviders.contains($0.provider)
+                && pacing[$0.id]?.allowsFetch(at: started) != false
         }
         let currentSettings = settings
         await withTaskGroup(of: (UUID, Result<UsageSnapshot, Error>, Bool).self) { group in
@@ -212,7 +227,12 @@ final class AppModel: ObservableObject {
             for await (id, result, hasBrowser) in group {
                 if hasBrowser { browserAccounts.insert(id) } else { browserAccounts.remove(id) }
                 switch result {
-                case .success(let reading): publishReading(reading, for: id)
+                case .success(let reading):
+                    publishReading(reading, for: id)
+                    pacing[id] = UsagePacing.succeeded(pacing[id], now: Date())
+                case .failure(AppFailure.rateLimited(_, let retryAfter)):
+                    // Not an account failure: keep the last reading on screen and wait.
+                    pacing[id] = UsagePacing.refused(pacing[id], retryAfter: retryAfter, now: Date())
                 case .failure(let error): recordAccountFailure(error, for: id)
                 }
             }
@@ -388,6 +408,7 @@ final class AppModel: ObservableObject {
             }
             readings[id] = nil
             errors[id] = nil
+            pacing[id] = nil
             browserAccounts.remove(id)
             setResult(t("Removed %@: %@.", account.provider.name, account.label))
         } catch { recordOperationFailure(error) }

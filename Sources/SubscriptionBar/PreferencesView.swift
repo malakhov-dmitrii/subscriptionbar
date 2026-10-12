@@ -55,7 +55,7 @@ struct PreferencesView: View {
                         }
                     }.disabled(!model.settings.enabledProviders.contains(provider))
                 }
-                Text(model.t("Shows enabled services and active accounts. The percentage is the lowest remaining limit; balances use the service currency. “—” means no fresh data. Turn everything off to show only the icon."))
+                Text(model.t("Shows enabled services and active accounts. Plans with a 5-hour and a weekly limit show both remaining percentages, 5-hour on top; other services show the lowest remaining limit. Balances use the service currency. “—” means no fresh data. Turn everything off to show only the icon."))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if Provider.allCases.contains(where: { !model.settings.enabledProviders.contains($0) }) {
                     Text(model.t("Greyed out services are turned off in General."))
@@ -64,11 +64,17 @@ struct PreferencesView: View {
             }
             Section(model.t("Preview")) {
                 LabeledContent(model.t("Menu bar shows")) {
-                    Text(model.menuBarText.isEmpty ? model.t("Icon only") : model.menuBarText)
-                        .monospacedDigit()
-                        .foregroundStyle(model.menuBarEntries.contains { $0.level == .critical } ? Color.red : .primary)
+                    if model.menuBarText.isEmpty {
+                        Text(model.t("Icon only"))
+                    } else {
+                        MenuBarLabel(entries: model.menuBarEntries, needsAttention: model.needsAttention)
+                            .foregroundStyle(model.menuBarEntries.contains { $0.level == .critical } ? Color.red : .primary)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(model.menuBarAccessibilitySummary)
+                    }
                 }
-                if model.menuBarText.count > 24 {
+                if (MenuBarLabel(entries: model.menuBarEntries, needsAttention: model.needsAttention)
+                    .templateImage(scale: 1)?.size.width ?? 0) > MenuBarLabel.comfortableWidth {
                     Label(model.t("This is long for the menu bar; macOS may hide other items."), systemImage: "exclamationmark.triangle")
                         .font(.caption).foregroundStyle(.orange)
                 }

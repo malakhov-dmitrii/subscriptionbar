@@ -19,6 +19,10 @@ public enum CursorUsage {
             guard let entry = individual[field], entry != .null else { continue }
             guard entry.object != nil else { throw AppFailure.invalidUsage }
             if entry["enabled"]?.bool == false { continue }
+            if field == "plan" {
+                let pools = try modelPools(entry, resetsAt: end)
+                if !pools.isEmpty { windows += pools; continue }
+            }
             let used: Double
             if field == "plan", let percent = entry["totalPercentUsed"], percent != .null {
                 guard let number = percent.number else { throw AppFailure.invalidUsage }
@@ -37,5 +41,17 @@ public enum CursorUsage {
         }
         guard !windows.isEmpty else { throw AppFailure.message("Cursor did not return a personal usage limit for this plan.") }
         return try UsageSnapshot(windows: windows, source: source, fetchedAt: now)
+    }
+
+    /// Cursor's Plan & Usage page shows the plan as two pools. `totalPercentUsed`
+    /// is a blended figure it never displays, so it is only a fallback for plans
+    /// that do not report pools.
+    private static func modelPools(_ plan: JSONValue, resetsAt end: Date?) throws -> [UsageWindow] {
+        try [("autoPercentUsed", "Cursor models"), ("apiPercentUsed", "Other models")].compactMap { field, label in
+            guard let raw = plan[field], raw != .null else { return nil }
+            guard let used = raw.number, used.isFinite, used >= 0 else { throw AppFailure.invalidUsage }
+            // Past the allowance Cursor bills on-demand; the included pool is gone either way.
+            return try UsageWindow(label, usedPercent: min(100, used), resetsAt: end)
+        }
     }
 }

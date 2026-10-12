@@ -136,8 +136,11 @@ public struct Settings: Codable, Sendable {
 
 public enum AppFailure: Error, LocalizedError, Equatable {
     case invalidUsage, invalidCredential, missingCredential, concurrentChange, unsupported(String), message(String)
+    case rateLimited(Provider, retryAfter: TimeInterval?)
     public var errorDescription: String? {
         switch self {
+        case .rateLimited(let provider, _):
+            L10n.tr("%@: the usage service is temporarily limiting requests. Try again in a few minutes.", provider.name)
         case .invalidUsage: L10n.tr("Usage response is missing, invalid, or has an unknown format.")
         case .invalidCredential: L10n.tr("Cannot verify the account in these credentials. Sign in again in the original client.")
         case .missingCredential: L10n.tr("No saved credentials. Sign in in the original client, then capture the account.")

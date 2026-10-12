@@ -1,5 +1,6 @@
 "%@: usage request failed. Check connectivity and sign-in." = "%@: не удалось запросить лимиты. Проверьте подключение и вход в аккаунт.";
 "%@: usage service rejected the request. Check account access." = "%@: сервис отклонил запрос лимитов. Проверьте доступ к аккаунту.";
+"%@: the usage service is temporarily limiting requests. Try again in a few minutes." = "%@: сервис лимитов временно ограничивает запросы. Повторите через несколько минут.";
 "A browser with this account's saved session is offline. Open it before switching." = "Браузер с сохранённой сессией этого аккаунта отключён. Откройте его перед переключением.";
 "Access granted" = "Доступ открыт";
 "Account access required" = "Нужен доступ к аккаунтам";

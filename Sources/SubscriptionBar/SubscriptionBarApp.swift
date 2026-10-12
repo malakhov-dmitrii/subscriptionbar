@@ -45,14 +45,17 @@ struct SubscriptionBarApp: App {
         MenuBarExtra {
             DashboardView(model: model)
         } label: {
-            // The icon is the only always-visible signal, so it must change shape
-            // when something needs attention, not just fill level.
-            Image(systemName: model.needsAttention ? "exclamationmark.triangle.fill" : "gauge.with.dots.needle.33percent")
-                .accessibilityLabel(model.menuBarAccessibilitySummary)
             // macOS renders the menu bar label as a template image, so colour cannot
-            // carry severity here; the icon above does.
-            if !model.menuBarText.isEmpty {
-                Text(model.menuBarText).monospacedDigit()
+            // carry severity here; the icon shape and the "!" marker do.
+            let label = MenuBarLabel(entries: model.menuBarEntries, needsAttention: model.needsAttention)
+            if let image = label.templateImage(scale: NSScreen.main?.backingScaleFactor ?? 2) {
+                Image(nsImage: image).accessibilityLabel(model.menuBarAccessibilitySummary)
+            } else {
+                Image(systemName: model.needsAttention ? "exclamationmark.triangle.fill" : "gauge.with.dots.needle.33percent")
+                    .accessibilityLabel(model.menuBarAccessibilitySummary)
+                if !model.menuBarText.isEmpty {
+                    Text(model.menuBarText).monospacedDigit()
+                }
             }
         }.menuBarExtraStyle(.window)
         // The Settings scene owns ⌘, ; the gear button reuses the same window

@@ -31,8 +31,8 @@ struct CompactProviderRow: View {
     }
     private var snapshot: UsageSnapshot? { account.flatMap { model.readings[$0.id] } }
     private var fresh: Bool {
-        guard let account, let snapshot else { return false }
-        return model.credentialAccess.permitsPolling && model.errors[account.id] == nil && snapshot.isFresh(at: model.now)
+        guard let account else { return false }
+        return model.readingState(account.id) == .current
     }
     /// Keep the last reading on screen when it goes stale. Blanking the whole
     /// dashboard after 90 seconds hides more than it protects; the age label
