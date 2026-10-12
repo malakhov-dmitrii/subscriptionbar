@@ -57,10 +57,11 @@ final class AppModel: ObservableObject {
     var menuBarText: String { menuBarEntries.map(\.text).joined(separator: " ") }
     var menuBarAccessibilitySummary: String {
         func spoken(_ value: String) -> String { value == "—" ? t("no fresh data") : t("%@ remaining", value) }
-        let parts = menuBarEntries.map { entry in
-            entry.provider.name + " " + (entry.rows.isEmpty ? spoken(entry.value)
-                : entry.rows.map { $0.spokenWindow + " " + spoken($0.value) }.joined(separator: ", "))
-                + (entry.delayed ? ", " + t("data is delayed") : "")
+        let parts = menuBarEntries.map { (entry: MenuBarEntry) -> String in
+            let rows: [String] = entry.rows.map { (row: MenuBarRow) -> String in row.spokenWindow + " " + spoken(row.value) }
+            let reading: String = rows.isEmpty ? spoken(entry.value) : rows.joined(separator: ", ")
+            let delay: String = entry.delayed ? ", " + t("data is delayed") : ""
+            return entry.provider.name + " " + reading + delay
         }
         return (["SubscriptionBar"] + parts + (needsAttention ? [t("needs attention")] : [])).joined(separator: ", ")
     }

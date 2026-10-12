@@ -39,7 +39,9 @@ import Testing
         model.now = Date().addingTimeInterval(600)
         #expect(codexEntry()?.value == "87%")
         #expect(codexEntry()?.delayed == true)
-        #expect(model.menuBarAccessibilitySummary.contains(model.t("%@ remaining", "87%") + ", " + model.t("data is delayed")))
+        let remaining: String = model.t("%@ remaining", "87%")
+        let delayed: String = model.t("data is delayed")
+        #expect(model.menuBarAccessibilitySummary.contains("\(remaining), \(delayed)"))
 
         await model.refresh()
         #expect(calls.count("A") == 2)
