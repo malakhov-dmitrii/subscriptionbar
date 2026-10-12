@@ -47,4 +47,25 @@ import Testing
         #expect(calls.count("A") == 2)
         #expect(calls.count("B") == 3)
     }
+
+    @Test func restartDuringRateLimitingShowsTheSavedNumbers() async throws {
+        let f = try CodexMonitoringTests.Fixture(); defer { f.clean() }
+        try SecureFiles.write(f.credentialA.primary, to: f.clientURL, expected: nil)
+        let calls = Calls()
+        let runtime = AccountRuntime(store: f.store, vault: f.vault, fetchUsage: { request in
+            let subject = CredentialParser.jwt(request.bearer)?["sub"]?.string ?? "?"
+            if subject == "A", calls.next("A") > 1 { throw AppFailure.rateLimited(.codex, retryAfter: nil) }
+            return try UsageSnapshot(windows: [UsageWindow("Primary", usedPercent: subject == "A" ? 13 : 27)], source: "fixture")
+        })
+        let first = AppModel(demo: false, store: f.store, runtime: runtime, startPolling: false, notificationSender: { _ in })
+        first.credentialAccess = .ready
+        await first.refresh()
+
+        let restarted = AppModel(demo: false, store: f.store, runtime: runtime, startPolling: false, notificationSender: { _ in })
+        restarted.credentialAccess = .ready
+        await restarted.refresh()
+        #expect(calls.count("A") == 2)
+        #expect(restarted.errors[f.a.id] == nil)
+        #expect(restarted.menuBarEntries.first { $0.provider == .codex }?.value == "87%")
+    }
 }

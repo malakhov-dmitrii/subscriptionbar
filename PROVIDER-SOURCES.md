@@ -16,7 +16,7 @@ Public source and documentation inspected on 2026-09-16. No authenticated provid
 
 The Claude reference's main OAuth path labels `/api/oauth/usage` disabled and instead sends a one-token Messages request. SubscriptionBar deliberately does not send that request: it performs inference and consumes quota. If read-only OAuth usage fails, connect a browser session. The reference retains an explicit-token method that still calls the OAuth usage endpoint, so public source does not establish universal endpoint availability.
 
-HTTP 429 from any usage endpoint is a temporary refusal, not an account failure. The last reading stays on screen for up to 5 minutes as current and up to 30 minutes as delayed, then shows as unavailable. That account's polling backs off from 2 to 15 minutes, honouring `Retry-After` (seconds or HTTP date) up to one hour. Automatic switching still requires a reading under 90 seconds old.
+HTTP 429 from any usage endpoint is a temporary refusal, not an account failure. The last reading stays on screen for up to 5 minutes as current and up to 30 minutes as delayed, then shows as unavailable. Readings are saved to `usage-cache.json` after each poll, so this holds across a restart. That account's polling backs off from 2 to 15 minutes, honouring `Retry-After` (seconds or HTTP date) up to one hour. Automatic switching still requires a reading under 90 seconds old.
 
 Missing, malformed, nonfinite, and out-of-range quota readings fail closed. Missing optional shared windows are skipped; an entirely unknown reading fails. Model-specific Claude limits and Codex additional model limits are not treated as shared account exhaustion. No response percentage is synthesized from a reset date.
 

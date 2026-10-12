@@ -238,6 +238,7 @@ final class AppModel: ObservableObject {
                 }
             }
         }
+        saveReadingCache()
         guard credentialAccess.permitsPolling else { return }
         for provider in Provider.allCases {
             if provider == .codex && !codexRotationReady { continue }
@@ -249,6 +250,13 @@ final class AppModel: ObservableObject {
             case .stay: break
             }
         }
+    }
+    /// Startup loads this file, so a restart while a service is refusing
+    /// requests can still show the last numbers instead of "—".
+    private func saveReadingCache() {
+        let url = store.root.appendingPathComponent("usage-cache.json")
+        guard let data = try? JSONEncoder().encode(LiveCache(readings: readings, errors: errors)) else { return }
+        try? SecureFiles.write(data, to: url, expected: SecureFiles.read(url))
     }
     func publishReading(_ reading: UsageSnapshot, for id: UUID) {
         // A response arrives after the previous UI clock tick. Update the clock
