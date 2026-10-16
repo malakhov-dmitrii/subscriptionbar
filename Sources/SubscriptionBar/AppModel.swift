@@ -487,18 +487,20 @@ final class AppModel: ObservableObject {
     }
     func requestNotifications() {
         guard !previewOnly else { return }
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { [weak self] _, _ in
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { @Sendable [weak self] _, _ in
             Task { await self?.readNotificationStatus() }
         }
     }
     /// A permission button with no visible outcome reads as broken, so keep the
     /// current answer on screen. `UNNotificationSettings` is not Sendable, so the
     /// reply is reduced to our own value inside the callback rather than crossing
-    /// the isolation boundary.
+    /// the isolation boundary. The callback runs on a background queue; without
+    /// `@Sendable`, Swift 6.1 on the macOS 15 SDK infers main-actor isolation
+    /// and traps at runtime when it arrives off the main thread.
     func readNotificationStatus() async {
         guard !previewOnly else { return }
         notificationStatus = await withCheckedContinuation { continuation in
-            UNUserNotificationCenter.current().getNotificationSettings { settings in
+            UNUserNotificationCenter.current().getNotificationSettings { @Sendable settings in
                 switch settings.authorizationStatus {
                 case .authorized, .provisional, .ephemeral: continuation.resume(returning: .allowed)
                 case .denied: continuation.resume(returning: .denied)
