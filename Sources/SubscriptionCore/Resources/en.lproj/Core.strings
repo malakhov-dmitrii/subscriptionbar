@@ -97,3 +97,5 @@
 "Codex uses a different HOME. Set an explicit absolute CODEX_HOME and restart it." = "Codex uses a different HOME. Set an explicit absolute CODEX_HOME and restart it.";
 "This sign-in belongs to a different Codex account or workspace. Sign in with the saved account." = "This sign-in belongs to a different Codex account or workspace. Sign in with the saved account.";
 "Codex returned an older saved login. No account was changed. Start sign-in again." = "Codex returned an older saved login. No account was changed. Start sign-in again.";
+"Updates install only into an installed app." = "Updates install only into an installed app.";
+"The update failed its %@ check and was not installed." = "The update failed its %@ check and was not installed.";

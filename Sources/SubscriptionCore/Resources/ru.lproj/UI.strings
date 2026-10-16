@@ -302,3 +302,9 @@
 "The Codex sign-in helper could not be stopped safely. No credentials were accepted." = "Не удалось безопасно остановить компонент входа Codex. Данные входа не приняты.";
 "The private Codex sign-in folder could not be prepared or cleaned safely." = "Не удалось безопасно подготовить или очистить временную папку входа Codex.";
 "Signed in as %@, not saved here" = "Вход выполнен как %@, аккаунт не сохранён";
+"Updates" = "Обновления";
+"Check for updates daily" = "Проверять обновления каждый день";
+"Asks GitHub for the latest release. An update installs only when you click it and only if it is signed by the same developer and notarized by Apple." = "Запрашивает последний релиз на GitHub. Обновление ставится только по вашему клику и только если подписано тем же разработчиком и нотаризовано Apple.";
+"Version %@ is available" = "Доступна версия %@";
+"What's new" = "Что нового";
+"Update" = "Обновить";

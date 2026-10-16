@@ -49,6 +49,7 @@ struct DashboardView: View {
             ScrollView {
                 VStack(spacing: 8) {
                     if showsAccessBanner { accessBanner }
+                    if let update = model.availableUpdate { updateBanner(update) }
                     if let reason = model.settings.automationPausedReason { pausedBanner(reason) }
                     if showsOnboarding { onboarding }
                     else {
@@ -103,6 +104,20 @@ struct DashboardView: View {
                     .buttonStyle(.borderedProminent).disabled(model.busy)
             }
         }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
+            .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func updateBanner(_ update: UpdateRelease) -> some View {
+        HStack {
+            Label(model.t("Version %@ is available", update.version), systemImage: "arrow.down.circle")
+                .font(.callout)
+            Spacer()
+            if let notes = update.notesURL {
+                Button(model.t("What's new")) { NSWorkspace.shared.open(notes) }.buttonStyle(.borderless)
+            }
+            Button(model.t("Update")) { Task { await model.installUpdate() } }
+                .buttonStyle(.borderedProminent).controlSize(.small).disabled(model.installingUpdate)
+        }.padding(12)
             .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
     }
 

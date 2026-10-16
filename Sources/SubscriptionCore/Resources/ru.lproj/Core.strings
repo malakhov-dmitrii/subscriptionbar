@@ -97,3 +97,5 @@
 "Codex uses a different HOME. Set an explicit absolute CODEX_HOME and restart it." = "Codex использует другой HOME. Задайте явный абсолютный CODEX_HOME и перезапустите экземпляр.";
 "This sign-in belongs to a different Codex account or workspace. Sign in with the saved account." = "Вход выполнен в другой аккаунт или workspace Codex. Войдите в сохранённый аккаунт.";
 "Codex returned an older saved login. No account was changed. Start sign-in again." = "Codex вернул более старые данные входа. Аккаунт не изменён. Начните вход заново.";
+"Updates install only into an installed app." = "Обновление ставится только в установленное приложение.";
+"The update failed its %@ check and was not installed." = "Обновление не прошло проверку (%@) и не установлено.";

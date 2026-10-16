@@ -16,6 +16,7 @@ struct PreferencesView: View {
         .safeAreaInset(edge: .top) { if model.previewOnly { previewNotice } }
         .onChange(of: model.settings.autoSwitch) { model.persist() }
         .onChange(of: model.settings.restartCodex) { model.persist() }
+        .onChange(of: model.settings.checkForUpdates) { model.persist() }
         .onDisappear { model.persist() }
         .task { await model.refreshConnectionStatus() }
     }
@@ -96,6 +97,13 @@ struct PreferencesView: View {
                     set: { model.setWarnThreshold($0) }), range: 1...80, enabled: true)
                 Toggle(model.t("Allow restarting Codex"), isOn: $model.settings.restartCodex)
                 Text(model.t("Uses fresh usage data. Set account priority in the Accounts tab. Automatic switching pauses after an error."))
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Section(model.t("Updates")) {
+                Toggle(model.t("Check for updates daily"), isOn: Binding(
+                    get: { model.settings.checkForUpdates != false },
+                    set: { model.settings.checkForUpdates = $0 }))
+                Text(model.t("Asks GitHub for the latest release. An update installs only when you click it and only if it is signed by the same developer and notarized by Apple."))
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Section(model.t("Notifications")) {

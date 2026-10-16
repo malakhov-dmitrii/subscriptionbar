@@ -23,6 +23,9 @@ final class AppModel: ObservableObject {
     /// Claude Code is signed into an account that is not saved here.
     @Published private(set) var unsavedClaudeLogin: String?
     private var autoAddedClaudeLogin: String?
+    @Published private(set) var availableUpdate: UpdateRelease?
+    @Published private(set) var installingUpdate = false
+    private var lastUpdateCheck: Date?
 
     enum NotificationStatus: Sendable { case unknown, notAsked, allowed, denied }
     let demo: Bool
@@ -135,6 +138,7 @@ final class AppModel: ObservableObject {
                 while !Task.isCancelled {
                     if self.credentialAccess.permitsPolling { await self.refresh() }
                     await self.refreshConnectionStatus()
+                    await self.checkForUpdate()
                     self.now = Date()
                     try? await Task.sleep(for: .seconds(30))
                 }
@@ -283,6 +287,19 @@ final class AppModel: ObservableObject {
         guard settings.active[.claude] != signedIn.account?.id else { return }
         settings.active[.claude] = signedIn.account?.id
         do { try saveOrThrow() } catch { recordOperationFailure(error) }
+    }
+    /// Once a day; a failed check stays silent and retries the next day.
+    func checkForUpdate(now: Date = Date()) async {
+        guard !demo, !previewOnly, settings.checkForUpdates != false, AppUpdater.installedBundle != nil,
+              lastUpdateCheck.map({ now.timeIntervalSince($0) > 86_400 }) ?? true else { return }
+        lastUpdateCheck = now
+        guard let release = try? await AppUpdater.latest() else { return }
+        availableUpdate = release.isNewer(than: AppUpdater.currentVersion) ? release : nil
+    }
+    func installUpdate() async {
+        guard let release = availableUpdate, !installingUpdate else { return }
+        installingUpdate = true; defer { installingUpdate = false }
+        do { try await AppUpdater.install(release) } catch { recordOperationFailure(error) }
     }
     /// Startup loads this file, so a restart while a service is refusing
     /// requests can still show the last numbers instead of "—".

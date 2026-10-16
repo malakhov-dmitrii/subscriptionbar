@@ -33,7 +33,9 @@ they are a few minutes old. `—` means there is no fresh reading.
   priority you set. Every step is verified before and after it writes.
 - **Stays local.** No server, no telemetry, no proxying of your requests.
   Credentials live in the macOS Keychain; the app talks only to each provider's
-  own usage endpoint.
+  own usage endpoint, plus a daily check of this repository's GitHub releases.
+- **Updates itself on a click.** A new release shows **Update** in the window.
+  It installs only if it is signed by the same developer and notarized by Apple.
 
 ## What it does not do
 

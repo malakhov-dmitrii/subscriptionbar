@@ -125,6 +125,8 @@ public struct Settings: Codable, Sendable {
     public var vaultSetupComplete: Bool?
     public var menuBarProviders: Set<Provider>?
     public var language: AppLanguage?
+    /// Nil means on: check GitHub Releases daily for a newer signed build.
+    public var checkForUpdates: Bool?
     public init() {}
 
     public var switchAt: Double { switchThreshold ?? 1 }

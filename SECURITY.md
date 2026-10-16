@@ -23,8 +23,13 @@ There is no bounty. This is a personal tool released as-is under MIT.
 ## Guarantees
 
 - **No server and no telemetry.** The app contacts each provider's own usage
-  endpoint and nothing else. There is no analytics, crash reporting or update
-  check.
+  endpoint, and once a day GitHub's public releases API for this repository.
+  The update check sends no account data and can be turned off in Settings →
+  General. There is no analytics or crash reporting.
+- **Updates install only on a click.** The downloaded zip must match the
+  release's `SHA256SUMS`, carry a Developer ID signature from team `XA54T94RVB`
+  with bundle id `com.local.subscriptionbar`, pass Gatekeeper as notarized and
+  report the advertised version. Anything else is discarded and nothing changes.
 - **Read-only usage requests.** Every provider request is a `GET` to a fixed
   HTTPS endpoint, with shared cookies and cache disabled and redirects refused.
   The app deliberately does not use Claude's one-token Messages workaround for
