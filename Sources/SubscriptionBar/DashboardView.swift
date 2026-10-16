@@ -170,6 +170,13 @@ struct ProviderCard: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            if provider == .claude, let login = model.unsavedClaudeLogin {
+                HStack {
+                    Text(model.t("Signed in as %@, not saved here", login)).font(.caption).foregroundStyle(.orange)
+                    Spacer()
+                    Button(model.t("Connect")) { SubscriptionDelegate.showAddAccount(provider: provider) }.controlSize(.small)
+                }
+            }
             if accounts.isEmpty {
                 HStack {
                     Text(model.t("Not connected")).foregroundStyle(.secondary)

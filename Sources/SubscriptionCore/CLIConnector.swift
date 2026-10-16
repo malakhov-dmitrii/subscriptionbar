@@ -61,6 +61,15 @@ public struct CLIConnector: Sendable {
         return KeychainItemSelector(service: service, account: NSUserName())
     }
 
+    /// The account Claude Code is signed into, read from its config file only:
+    /// no Keychain access, so it works even while token reads are unavailable.
+    public func signedInClaudeAccount() throws -> (id: String, email: String?)? {
+        let config = try claudeConfig(try home(.claude))
+        let account = try JSONValue.parse(config.data)["oauthAccount"]
+        guard let id = account?["accountUuid"]?.string, !id.isEmpty else { return nil }
+        return (id, account?["emailAddress"]?.string)
+    }
+
     public func authorizeClaudeKeychain(_ selector: KeychainItemSelector) throws -> KeychainVerificationResult {
         guard selector == (try claudeKeychainSelector()) else { throw AppFailure.concurrentChange }
         return try keychain.authorizeAndVerify(selector) { data in

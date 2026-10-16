@@ -301,3 +301,4 @@
 "The isolated Codex sign-in did not produce a valid credential file." = "The isolated Codex sign-in did not produce a valid credential file.";
 "The Codex sign-in helper could not be stopped safely. No credentials were accepted." = "The Codex sign-in helper could not be stopped safely. No credentials were accepted.";
 "The private Codex sign-in folder could not be prepared or cleaned safely." = "The private Codex sign-in folder could not be prepared or cleaned safely.";
+"Signed in as %@, not saved here" = "Signed in as %@, not saved here";

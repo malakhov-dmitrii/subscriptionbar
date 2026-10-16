@@ -301,3 +301,4 @@
 "The isolated Codex sign-in did not produce a valid credential file." = "После входа Codex не создал корректный файл авторизации во временной папке.";
 "The Codex sign-in helper could not be stopped safely. No credentials were accepted." = "Не удалось безопасно остановить компонент входа Codex. Данные входа не приняты.";
 "The private Codex sign-in folder could not be prepared or cleaned safely." = "Не удалось безопасно подготовить или очистить временную папку входа Codex.";
+"Signed in as %@, not saved here" = "Вход выполнен как %@, аккаунт не сохранён";

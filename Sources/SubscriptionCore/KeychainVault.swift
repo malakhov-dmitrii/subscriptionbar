@@ -184,6 +184,7 @@ public struct KeychainClient: Sendable {
 
     private static func systemSnapshot(_ selector: KeychainItemSelector, _ persistentReference: Data?,
                                        _ allowUserInteraction: Bool) throws -> KeychainItemSnapshot? {
+        if ClaudeKeychainCLI.handles(selector) { return try ClaudeKeychainCLI.read(selector) }
         let query = snapshotQuery(selector, persistentReference: persistentReference,
                                   allowUserInteraction: allowUserInteraction)
         var result: CFTypeRef?
@@ -204,6 +205,7 @@ public struct KeychainClient: Sendable {
     }
 
     private static func systemWrite(_ selector: KeychainItemSelector, _ data: Data) throws {
+        if ClaudeKeychainCLI.handles(selector) { return try ClaudeKeychainCLI.write(selector, data: data) }
         var query = writeQuery(service: selector.service, account: selector.account)
         if let accessGroup = selector.accessGroup { query[kSecAttrAccessGroup as String] = accessGroup }
         if selector.useDataProtectionKeychain { query[kSecUseDataProtectionKeychain as String] = true }
@@ -331,7 +333,7 @@ public struct KeychainVault: SecretStoring {
         return (result as? [[String: Any]] ?? []).compactMap { item in
             guard let service = item[kSecAttrService as String] as? String,
                   item[kSecAttrAccount as String] as? String == NSUserName(),
-                  service == "Claude Code-credentials" || service.hasPrefix("Claude Code-credentials-") else { return nil }
+                  ClaudeKeychainCLI.isClaudeService(service) else { return nil }
             return service
         }.sorted()
     }

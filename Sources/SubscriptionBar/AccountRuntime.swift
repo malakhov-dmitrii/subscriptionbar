@@ -177,6 +177,23 @@ actor AccountRuntime {
         let request = try usageCredential(account: account, envelope: credentials)
         return try await fetchUsage(request)
     }
+    /// Which saved Claude account the client is using. The token is the
+    /// authority because `.claude.json` can lag behind it; the config's
+    /// account id decides only when no saved token matches.
+    /// ponytail: a token Claude refreshed since our last fetch matches nothing,
+    /// so a lagging config wins until the next successful fetch saves it.
+    func signedInClaude(settings: Settings) throws -> (account: Account?, login: String)? {
+        let connector = CLIConnector(settings: settings, keychain: keychain)
+        guard let login = try connector.signedInClaudeAccount() else { return nil }
+        let accounts = settings.accounts.filter { $0.provider == .claude }
+        if let token = try? connector.capture(.claude).primary {
+            let ordered = accounts.sorted { a, _ in a.id == settings.active[.claude] }
+            if let owner = ordered.first(where: { (try? store.loadCredential($0.id, vault: vault).primary) == token }) {
+                return (owner, login.email ?? login.id)
+            }
+        }
+        return (accounts.first { $0.identity == login.id }, login.email ?? login.id)
+    }
     func switchNative(to target: Account, from original: Account, settings: Settings) async throws {
         let connector = CLIConnector(settings: settings, keychain: keychain)
         let source = try connector.capture(target.provider)

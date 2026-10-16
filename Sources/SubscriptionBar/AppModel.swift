@@ -20,6 +20,9 @@ final class AppModel: ObservableObject {
     @Published var codexObservations: [UUID: CodexProfileObservation] = [:]
     @Published var codexReauthentication: CodexReauthenticationController?
     @Published private(set) var pacing: [UUID: UsagePacing] = [:]
+    /// Claude Code is signed into an account that is not saved here.
+    @Published private(set) var unsavedClaudeLogin: String?
+    private var autoAddedClaudeLogin: String?
 
     enum NotificationStatus: Sendable { case unknown, notAsked, allowed, denied }
     let demo: Bool
@@ -184,31 +187,38 @@ final class AppModel: ObservableObject {
             let cleanLabel = label.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !cleanLabel.isEmpty, cleanLabel.count <= 80 else { throw AppFailure.message(t("Enter an account name (up to 80 characters).")) }
             if provider == .codex { return try await addCodexAccount(label: cleanLabel) }
-            let credentials = try await runtime.capture(provider: provider, settings: settings, apiKey: apiKey)
-            if let existing = settings.accounts.first(where: { $0.provider == provider && $0.identity == credentials.identity }) {
-                try await runtime.save(account: existing, credential: credentials)
-                settings.active[provider] = existing.id
-                setResult(t("Sign-in updated: %@.", existing.label))
-            } else {
-                let account = Account(provider: provider, label: cleanLabel, identity: credentials.identity)
-                try await runtime.save(account: account, credential: credentials)
-                settings.accounts.append(account)
-                settings.active[provider] = account.id
-                let wasOff = !settings.enabledProviders.contains(provider)
-                settings.enabledProviders.insert(provider)
-                var message = t("Added %@: %@.", provider.name, account.label)
-                // Turning a service back on is a settings change; say so instead of doing it quietly.
-                if wasOff { message += " " + t("%@ was switched back on in Settings.", provider.name) }
-                setResult(message)
-            }
-            try saveOrThrow()
+            try await addCaptured(provider: provider, label: cleanLabel, apiKey: apiKey)
             return true
         } catch { recordOperationFailure(error); return false }
+    }
+    /// An empty label names a new account after the captured login's email.
+    private func addCaptured(provider: Provider, label: String, apiKey: String) async throws {
+        let credentials = try await runtime.capture(provider: provider, settings: settings, apiKey: apiKey)
+        if let existing = settings.accounts.first(where: { $0.provider == provider && $0.identity == credentials.identity }) {
+            try await runtime.save(account: existing, credential: credentials)
+            settings.active[provider] = existing.id
+            setResult(t("Sign-in updated: %@.", existing.label))
+        } else {
+            let email = credentials.metadata?["emailAddress"]?.string.map { String($0.prefix(80)) }
+            let account = Account(provider: provider, label: label.isEmpty ? email ?? provider.name : label,
+                                  identity: credentials.identity)
+            try await runtime.save(account: account, credential: credentials)
+            settings.accounts.append(account)
+            settings.active[provider] = account.id
+            let wasOff = !settings.enabledProviders.contains(provider)
+            settings.enabledProviders.insert(provider)
+            var message = t("Added %@: %@.", provider.name, account.label)
+            // Turning a service back on is a settings change; say so instead of doing it quietly.
+            if wasOff { message += " " + t("%@ was switched back on in Settings.", provider.name) }
+            setResult(message)
+        }
+        try saveOrThrow()
     }
     func refresh() async {
         guard !busy, !demo, !previewOnly, credentialAccess.permitsPolling else { return }
         busy = true; defer { busy = false; now = Date() }
         await synchronizeCodexProfiles()
+        await detectClaudeLogin()
         guard credentialAccess.permitsPolling else { return }
         let started = Date()
         let accounts = settings.accounts.filter {
@@ -250,6 +260,29 @@ final class AppModel: ObservableObject {
             case .stay: break
             }
         }
+    }
+    /// Follows a `claude /login` made outside the app: the signed-in account
+    /// becomes active, and an unknown one is added. If adding fails, the stale
+    /// selection is cleared and the card offers to connect it by hand.
+    func detectClaudeLogin() async {
+        guard settings.enabledProviders.contains(.claude),
+              let signedIn = try? await runtime.signedInClaude(settings: settings) else {
+            unsavedClaudeLogin = nil; return
+        }
+        // A new login is saved under its email so its limits show at once. One
+        // attempt per login: a failure leaves the card's Connect hint instead
+        // of repeating an error on every poll.
+        if signedIn.account == nil, autoAddedClaudeLogin != signedIn.login {
+            autoAddedClaudeLogin = signedIn.login
+            if (try? await addCaptured(provider: .claude, label: "", apiKey: "")) != nil {
+                unsavedClaudeLogin = nil
+                return
+            }
+        }
+        unsavedClaudeLogin = signedIn.account == nil ? signedIn.login : nil
+        guard settings.active[.claude] != signedIn.account?.id else { return }
+        settings.active[.claude] = signedIn.account?.id
+        do { try saveOrThrow() } catch { recordOperationFailure(error) }
     }
     /// Startup loads this file, so a restart while a service is refusing
     /// requests can still show the last numbers instead of "—".

@@ -99,10 +99,20 @@ SubscriptionBar copies the credentials it finds into its own Keychain entry. It
 never asks you to type a subscription password. API-key services take the key in
 a secure field instead.
 
-If macOS later revokes access, or Claude Code replaces its Keychain item during
-token rotation, SubscriptionBar pauses and shows **Allow access**. One click reads
-only the exact failed item, then repeats the read with interaction disabled before
-monitoring resumes. Cancelling does not retry or replay the failed action.
+Claude Code's own Keychain item is read and written through `/usr/bin/security`,
+the tool Claude Code itself uses. Claude Code rewrites that item on every token
+refresh, which drops any access macOS granted to another app, so reading it
+directly meant a new **Allow access** prompt every few hours. The token travels
+over a pipe and never appears in process arguments.
+
+The app follows `claude /login` on its own: the account Claude Code is signed
+into becomes active, and an account it has not seen is saved under its email.
+If that save fails, the Claude card offers **Connect** instead.
+
+If macOS revokes access to SubscriptionBar's own vault, it pauses and shows
+**Allow access**. One click reads only the exact failed item, then repeats the
+read with interaction disabled before monitoring resumes. Cancelling does not
+retry or replay the failed action.
 
 Codex limits are read with each saved account's own credentials. Changing or
 signing out of a client does not remove the other saved accounts or prevent
